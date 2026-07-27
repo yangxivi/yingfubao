@@ -30,11 +30,13 @@ jobs:
         working-directory: frontend
         run: npm install --legacy-peer-deps
 
-      - name: Build (inject Pages base path & backend API url)
+      - name: Build (inject Pages base path, API url & Supabase config)
         working-directory: frontend
         env:
           VITE_BASE_URL: /yingfubao/
           VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
         run: npm run build
 
       - name: SPA fallback (404.html -> index.html)
