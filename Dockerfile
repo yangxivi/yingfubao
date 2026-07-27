@@ -24,4 +24,5 @@ COPY --from=frontend-build /app/frontend/dist ./frontend/dist
 WORKDIR /app/backend
 ENV PYTHONUNBUFFERED=1
 EXPOSE 8000
-CMD ["gunicorn", "main:app", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8000", "--workers", "2"]
+# 监听云平台注入的 PORT（Render/Railway 等），本地回退 8000
+CMD ["sh", "-c", "gunicorn main:app -k uvicorn.workers.UvicornWorker -b 0.0.0.0:${PORT:-8000} --workers 2"]
