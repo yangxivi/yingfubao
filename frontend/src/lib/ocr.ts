@@ -1,9 +1,14 @@
-// 浏览器端 OCR 引擎：使用 Tesseract.js（WASM）在本地识别发票，零密钥、可离线（语言包首次需联网下载）。
-// 图像预处理（灰度 + 对比度增强 + 多尺度）提升中文发票识别率；字段解析针对增值税发票版面特征优化。
+// 发票 OCR：前端把图片/PDF 发给 Supabase Edge Function（baidu-ocr），
+// 由函数调用「百度高精度通用文字识别（accurate_basic）」，返回文字后前端用正则+锚点提取字段。
+//
+// 与历史版本的区别：
+// - 移除 Tesseract.js（浏览器本地 OCR），完全改用百度高精度，识别率更高
+// - 保留 PDF 支持（pdfjs 渲染成图片逐页发百度）
+// - 字段提取逻辑（parseStructured 等）完全复用，这是核心资产，不动
 
-import Tesseract from 'tesseract.js';
 import * as pdfjsLib from 'pdfjs-dist';
 import workerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import { supabase } from './supabase';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
 
@@ -22,36 +27,40 @@ export interface OcrResult {
   raw_text: string;
 }
 
-function loadImage(file: File): Promise<HTMLImageElement> {
+// ===== 图片/Canvas → base64（去 data: 前缀，百度要求纯 base64）=====
+function canvasToBase64(canvas: HTMLCanvasElement): string {
+  return canvas.toDataURL('image/jpeg', 0.85).split(',')[1] || '';
+}
+
+function loadImageEl(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
     const img = new Image();
-    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('图片加载失败')); };
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('图片加载失败'));
     img.src = url;
   });
 }
 
-// 灰度 + 对比度增强（2.0），返回缩放后的 canvas 供 OCR（支持图片或已渲染的 canvas）
-function preprocess(src: HTMLImageElement | HTMLCanvasElement, scale: number): HTMLCanvasElement {
-  const w = Math.max(1, Math.round(src.width * scale));
-  const h = Math.max(1, Math.round(src.height * scale));
-  const canvas = document.createElement('canvas');
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext('2d')!;
-  ctx.drawImage(src, 0, 0, w, h);
-  const imageData = ctx.getImageData(0, 0, w, h);
-  const d = imageData.data;
-  for (let i = 0; i < d.length; i += 4) {
-    let gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-    gray = Math.min(255, Math.max(0, (gray - 128) * 2.0 + 128));
-    d[i] = d[i + 1] = d[i + 2] = gray;
+// 压缩图片到最长边 maxSide，转 jpeg base64（减小上传体积，百度对 base64 大小有限制）
+async function imageToCompressedBase64(file: File, maxSide = 2000): Promise<string> {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await loadImageEl(url);
+    const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+    const w = Math.max(1, Math.round(img.width * scale));
+    const h = Math.max(1, Math.round(img.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d')!;
+    ctx.drawImage(img, 0, 0, w, h);
+    return canvasToBase64(canvas);
+  } finally {
+    URL.revokeObjectURL(url);
   }
-  ctx.putImageData(imageData, 0, 0);
-  return canvas;
 }
 
+// PDF → 每页渲染成 canvas（百度 OCR 不直接收 PDF，需前端转图）
 async function pdfToImages(file: File): Promise<HTMLCanvasElement[]> {
   const buf = await file.arrayBuffer();
   const doc = await pdfjsLib.getDocument({ data: buf }).promise;
@@ -59,7 +68,7 @@ async function pdfToImages(file: File): Promise<HTMLCanvasElement[]> {
   for (let p = 1; p <= doc.numPages; p++) {
     const page = await doc.getPage(p);
     const base = page.getViewport({ scale: 1 });
-    const scale = Math.min(2.0, 2400 / Math.max(base.width, base.height));
+    const scale = Math.min(1.5, 1800 / Math.max(base.width, base.height));
     const viewport = page.getViewport({ scale });
     const canvas = document.createElement('canvas');
     canvas.width = Math.round(viewport.width);
@@ -71,8 +80,22 @@ async function pdfToImages(file: File): Promise<HTMLCanvasElement[]> {
   return out;
 }
 
-// ===== 模糊匹配工具 =====
-// Tesseract 常见中文误识别映射：OCR 输出 → 正确词
+// ===== 调用 Supabase Edge Function（baidu-ocr）=====
+async function callBaiduOcr(base64: string): Promise<string> {
+  if (!supabase) {
+    throw new Error(
+      '未配置 Supabase（百度 OCR 不可用）。请在 frontend/.env 填写 VITE_SUPABASE_URL 与 VITE_SUPABASE_ANON_KEY',
+    );
+  }
+  const { data, error } = await supabase.functions.invoke('baidu-ocr', {
+    body: { image: base64 },
+  });
+  if (error) throw new Error('调用百度 OCR 失败：' + (error.message || '网络错误'));
+  if (data?.error) throw new Error('百度 OCR 返回错误：' + data.error);
+  return data?.raw_text || '';
+}
+
+// ===== 模糊匹配工具（百度也可能误识别个别锚点词，容错）=====
 const FUZZY_MAP: Record<string, string[]> = {
   '销售方': ['销方', '销 售方', '销售 方', '销舊方', '銷售方', '销舊'],
   '购买方': ['购方', '购 买方', '购买 方', '購買方', '購方'],
@@ -106,15 +129,12 @@ function parseDate(text: string): string | null {
 }
 
 function parseAmount(text: string): number | null {
-  // 清除所有货币符号和逗号
   const clean = text.replace(/[¥￥$€,，\s]/g, '').trim();
-  // 匹配正数（含小数点）
   const m = clean.match(/^(\d+\.?\d*)$/);
   if (m) {
     const v = parseFloat(m[1]);
     return isNaN(v) || v <= 0 ? null : v;
   }
-  // 从混合文本中提取金额
   const m2 = clean.match(/(\d+\.?\d*)/);
   if (m2) {
     const v = parseFloat(m2[1]);
@@ -124,13 +144,10 @@ function parseAmount(text: string): number | null {
 }
 
 function parseTaxId(text: string): string | null {
-  // 统一社会信用代码格式：18位，字母不包含 I/O/Z/S/V（但实际可能包含）
-  // 宽松匹配：以数字或字母开头，18位左右
   const m = text.match(/([0-9A-HJ-NPQRTUWXY]{2}\d{6}[0-9A-HJ-NPQRTUWXY]{10})/i);
   if (m) return m[1].toUpperCase();
-  // 兜底：15位或17位的老税号
   const m2 = text.match(/\b(\d{15}|\d{17}|\d{20})\b/);
-  if (m2 && !text.match(/\d{20}/)) return m2[1]; // 避免与发票号混淆
+  if (m2 && !text.match(/\d{20}/)) return m2[1];
   return null;
 }
 
@@ -149,9 +166,6 @@ function companyNames(lines: string[]): string[] {
   return Array.from(new Set(names));
 }
 
-// ===== 结构化字段解析（基于增值税发票版面锚点 + 模糊匹配）=====
-
-/** 从 lines 中找到第一个包含 target 锚点的行索引 */
 function findLineIndex(lines: string[], anchor: string): number {
   for (let i = 0; i < lines.length; i++) {
     if (hasAnchor(lines[i], anchor)) return i;
@@ -159,16 +173,14 @@ function findLineIndex(lines: string[], anchor: string): number {
   return -1;
 }
 
-/** 从 lines 中提取从 startIdx 到 endIdx（不含）之间的文本 */
 function extractBlock(lines: string[], startIdx: number, endIdx?: number): string {
   const end = endIdx ?? lines.length;
   return lines.slice(startIdx, end).join(' ');
 }
 
 /**
- * 解析增值税发票结构化字段。
- * 核心改进：
- * 1. 所有锚点匹配使用 hasAnchor() 支持模糊匹配（Tesseract 中文误识别容错）
+ * 解析增值税发票结构化字段（基于版面锚点 + 模糊匹配）。
+ * 1. 锚点匹配使用 hasAnchor() 容错
  * 2. 价税合计：多级回退，确保不为 0
  * 3. 销售方名称/税号：区域定位 + 全文兜底双重保障
  */
@@ -182,7 +194,6 @@ function parseStructured(full: string, lines: string[]): OcrResult {
     const m2 = full.match(/\b(\d{20})\b/);
     if (m2) invoice_no = m2[1];
     else {
-      // 兜底：找最长的一串纯数字（>=8位）
       const nums = full.match(/\b(\d{8,20})\b/g);
       if (nums && nums.length > 0) invoice_no = nums[0];
     }
@@ -198,7 +209,6 @@ function parseStructured(full: string, lines: string[]): OcrResult {
   // ---- 3. 价税合计（多级回退，确保不为 0）----
   let total_amount = 0;
 
-  // 3a. 最精确：「（小写）¥xxxx」或「小写 ¥xxxx」
   const patterns_small = [
     /(?:小写|小写\s*[)）]|（\s*小写\s*[)）])[^\d]*?[￥¥]\s*([\d,]+\.?\d*)/i,
     /[￥¥]\s*([\d,]+\.?\d*)\s*\(.*?小.*?\)/i,
@@ -211,7 +221,6 @@ function parseStructured(full: string, lines: string[]): OcrResult {
     }
   }
 
-  // 3b. 「价税合计」附近带 ¥ 的金额
   if (total_amount <= 0) {
     const totalPatterns = [
       /价税合计[^￥¥\d]*(?:￥|¥)\s*([\d,]+\.?\d*)/i,
@@ -227,20 +236,18 @@ function parseStructured(full: string, lines: string[]): OcrResult {
     }
   }
 
-  // 3c. 找含 ¥ 且数值合理的最大金额（排除银行账号等超长数字）
   if (total_amount <= 0) {
     const amounts: number[] = [];
     for (const t of lines) {
       if (t.includes('¥') || t.includes('￥')) {
         const a = parseAmount(t);
-        if (a && a >= 1 && a < 1e10) amounts.push(a); // 上限排除银行账号
+        if (a && a >= 1 && a < 1e10) amounts.push(a);
       }
     }
     amounts.sort((a, b) => b - a);
     if (amounts.length > 0) total_amount = amounts[0];
   }
 
-  // 3d. 最终兜底：全文件中最大的合理金额
   if (total_amount <= 0) {
     const allAmounts: number[] = [];
     for (const t of lines) {
@@ -255,7 +262,6 @@ function parseStructured(full: string, lines: string[]): OcrResult {
   let amount_excluding_tax = 0;
   let tax_amount = 0;
 
-  // 从非汇总行提取表格金额
   const tableAmounts: number[] = [];
   for (const t of lines) {
     if (hasAnchor(t, '合计') || hasAnchor(t, '价税合计') || hasAnchor(t, '小写')) continue;
@@ -268,7 +274,6 @@ function parseStructured(full: string, lines: string[]): OcrResult {
     amount_excluding_tax = uniqTable[0];
     tax_amount = Math.round((total_amount - amount_excluding_tax) * 100) / 100;
   } else if (total_amount > 0) {
-    // 反算：假设税率 13% 或 3%
     amount_excluding_tax = Math.round(total_amount / 1.13 * 100) / 100;
     tax_amount = Math.round(total_amount - amount_excluding_tax);
   }
@@ -278,18 +283,16 @@ function parseStructured(full: string, lines: string[]): OcrResult {
   const rm = full.match(/(\d{1,2}(?:\.\d+)?)\s*[%％]/);
   if (rm) tax_rate = `${rm[1]}%`;
 
-  // ---- 5. 销售方名称（区域定位 + 模糊锚点 + 多级回退）----
+  // ---- 5. 销售方名称 ----
   let seller_name = '';
   let buyer_name = '';
 
-  // 方法A：逐行扫描，用模糊锚点判断是否在销售方/购买方区域内
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const contextBefore = lines.slice(Math.max(0, i - 5), i).join(' ');
     const isSellerZone = hasAnchor(contextBefore, '销售方');
     const isBuyerZone = hasAnchor(contextBefore, '购买方');
 
-    // 匹配「名称: xxx公司」模式（宽松匹配冒号和中英文冒号）
     const nameMatch = line.match(/名称[：:\s]*([^\n\r]{4,40}?)/);
     if (nameMatch) {
       const candidate = nameMatch[1].trim().replace(/[：:\s]+$/, '');
@@ -301,7 +304,6 @@ function parseStructured(full: string, lines: string[]): OcrResult {
     }
   }
 
-  // 方法B：在销售方/购买方块内搜索公司名
   if (!seller_name) {
     const sellerIdx = findLineIndex(lines, '销售方');
     if (sellerIdx >= 0) {
@@ -323,7 +325,6 @@ function parseStructured(full: string, lines: string[]): OcrResult {
     }
   }
 
-  // 方法C：全文公司名列表，按位置判断（第二个通常是销售方）
   if (!seller_name || !buyer_name) {
     const allCompanies = companyNames(lines);
     if (allCompanies.length >= 2) {
@@ -335,23 +336,20 @@ function parseStructured(full: string, lines: string[]): OcrResult {
     }
   }
 
-  // 修正：如果 seller_name 包含购方关键字，交换
   if (seller_name && (seller_name.includes('三力') || seller_name.includes('购方'))) {
     [buyer_name, seller_name] = [seller_name, buyer_name];
   }
 
-  // ---- 6. 税号（区域定位 + 模糊锚点 + 多级回退）----
+  // ---- 6. 税号 ----
   let seller_tax_id = '';
   let buyer_tax_id = '';
 
-  // 方法A：在销售方/购买方区域内找税号（模糊匹配纳税人识别号等关键词）
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const contextBefore = lines.slice(Math.max(0, i - 5), i).join(' ');
     const isSellerZone = hasAnchor(contextBefore, '销售方');
     const isBuyerZone = hasAnchor(contextBefore, '购买方');
 
-    // 模糊匹配各种税号关键词
     const tidMatch = line.match(
       /(?:纳税人识别号|纳税人识别号码|统一社会信用代码|信用代码|纳税号|识别号)[号碼：:\s]*([0-9A-HJ-NPQRTUWXY]{2}\d{6}[0-9A-HJ-NPQRTUWXY]{10})/i
     );
@@ -361,7 +359,6 @@ function parseStructured(full: string, lines: string[]): OcrResult {
     }
   }
 
-  // 方法B：在销售方/购买方块内搜索任意税号格式
   if (!seller_tax_id) {
     const sellerIdx = findLineIndex(lines, '销售方');
     if (sellerIdx >= 0) {
@@ -381,7 +378,6 @@ function parseStructured(full: string, lines: string[]): OcrResult {
     }
   }
 
-  // 方法C：全局取不重复的税号
   if (!seller_tax_id || !buyer_tax_id) {
     const globalTaxIds: string[] = [];
     for (const t of lines) {
@@ -410,62 +406,38 @@ function parseStructured(full: string, lines: string[]): OcrResult {
   };
 }
 
-function pickBest(cands: OcrResult[]): OcrResult {
-  return cands.reduce((best, c) => {
-    const score = (r: OcrResult) =>
-      (r.total_amount > 0 ? 3 : 0) +
-      (r.invoice_no ? 1 : 0) +
-      (r.invoice_date ? 1 : 0) +
-      (r.seller_name ? 2 : 0) +
-      (r.seller_tax_id ? 2 : 0);
-    const sb = score(best);
-    const sc = score(c);
-    if (sc > sb || (sc === sb && c.raw_text.length > best.raw_text.length)) return c;
-    return best;
-  });
-}
-
 export async function recognizeInvoice(
   file: File,
   onProgress?: (current: number, total: number) => void,
 ): Promise<OcrResult> {
-  const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-  const sources: (HTMLImageElement | HTMLCanvasElement)[] = [];
+  const isPdf =
+    file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+
+  const pagesText: string[] = [];
+
   if (isPdf) {
     try {
-      sources.push(...(await pdfToImages(file)));
-    } catch (e) {
-      throw new Error('PDF 解析失败：文件可能损坏或加密');
+      const canvases = await pdfToImages(file);
+      for (let i = 0; i < canvases.length; i++) {
+        const b64 = canvasToBase64(canvases[i]);
+        const text = await callBaiduOcr(b64);
+        pagesText.push(text);
+        onProgress?.(i + 1, canvases.length);
+      }
+    } catch (e: any) {
+      throw new Error('PDF 解析失败：' + (e.message || '文件可能损坏或加密'));
     }
   } else {
-    sources.push(await loadImage(file));
+    const b64 = await imageToCompressedBase64(file);
+    const text = await callBaiduOcr(b64);
+    pagesText.push(text);
+    onProgress?.(1, 1);
   }
-  if (sources.length === 0) throw new Error('未能从文件中提取图像');
 
-  const scales = [2.0, 1.0];
-  const stepCount = sources.length * scales.length;
-  let stepDone = 0;
-  const cands: OcrResult[] = [];
-
-  for (let si = 0; si < sources.length; si++) {
-    for (let sc = 0; sc < scales.length; sc++) {
-      const canvas = preprocess(sources[si], scales[sc]);
-      const res = await Tesseract.recognize(canvas, 'chi_sim+eng', {
-        logger: (m: any) => {
-          if (m.status === 'recognizing text' && onProgress) {
-            const currentFile = si + 1;
-            const totalFiles = sources.length;
-            onProgress(currentFile, totalFiles);
-          }
-        },
-      });
-      const lines = res.data.text
-        .split('\n')
-        .map((l: string) => l.trim())
-        .filter(Boolean);
-      cands.push(parseStructured(res.data.text, lines));
-      stepDone += 1;
-    }
-  }
-  return pickBest(cands);
+  const full = pagesText.join('\n');
+  const lines = full
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
+  return parseStructured(full, lines);
 }

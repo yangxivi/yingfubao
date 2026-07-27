@@ -191,9 +191,6 @@ export default function SupplierListPage() {
             <Select.Option value="yes">有联系人</Select.Option>
             <Select.Option value="no">无联系人</Select.Option>
           </Select>
-          <Select placeholder="高级筛选" allowClear style={{ width: 120 }} dropdownRender={() => null}>
-            <Select.Option value="">高级筛选</Select.Option>
-          </Select>
         </div>
         <div className="yb-toolbar-right">
           <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>

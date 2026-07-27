@@ -11,7 +11,7 @@ import {
   FileTextOutlined,
   InboxOutlined,
   PlusOutlined,
-  UnorderedListOutlined,
+  UnorderedListOutlined, TeamOutlined,
   DashboardOutlined,
 } from '@ant-design/icons';
 import { invoiceApi } from '../api/client';
