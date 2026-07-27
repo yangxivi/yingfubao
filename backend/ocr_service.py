@@ -1,12 +1,9 @@
 """
 Invoice OCR Service - 增值税发票自动识别
 
-识别引擎优先级（自动选择，无需修改代码）：
-  1. OCR.space（免费 API，中文发票识别质量良好）  —— 需配置环境变量 OCR_SPACE_KEY
-     免费层每月 25,000 次、单文件 ≤1MB，无需信用卡，适合中小规模使用。
-  2. 本地 Tesseract（pytesseract） —— 服务器需安装 tesseract 并含中文包（chi_sim），
-     零密钥、可离线，作为 OCR.space 不可用时的兜底。
-  3. 以上均不可用时不抛异常，返回空结构，由前端转为“人工补录草稿”，系统始终可用。
+识别引擎：本地 Tesseract（pytesseract），零密钥、可离线、完全免费。
+  对上传图片 / PDF 首页做图像预处理（灰度、对比度 / 锐度增强、中值去噪、多尺度放大），
+  显著提升中文发票的识别率；解析失败时不抛异常，返回空结构交由前端人工补录。
 
 支持图片（PNG/JPG/BMP/TIFF）与 PDF（使用 pymupdf 渲染首页）。
 """
@@ -97,7 +94,7 @@ def _company_names(texts: List[str]) -> List[str]:
 
 
 def _parse_structured(text: str, texts: List[str]) -> Dict[str, Any]:
-    """通用文本解析（适用于 Tesseract / OCR.space 返回的全文）。"""
+    """通用文本解析（适用于 Tesseract 返回的全文）。"""
     full = text
 
     # 发票号码：20 位或 8-20 位数字，常跟在“发票号码”后
@@ -182,90 +179,51 @@ def _parse_structured(text: str, texts: List[str]) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# 引擎 1：OCR.space 免费 API（中文发票识别，无需信用卡）
-# ---------------------------------------------------------------------------
-def _ocr_ocrspace(path: str) -> Optional[Dict[str, Any]]:
-    """调用 OCR.space 免费 API 识别中文发票。
-
-    免费层限制：每月 25,000 次、单文件 ≤1MB、使用 OCR Engine 1。
-    需环境变量 OCR_SPACE_KEY；无 key 或调用失败则返回 None，交由 Tesseract 兜底。
-    """
-    api_key = os.environ.get("OCR_SPACE_KEY")
-    if not api_key:
-        return None
-    try:
-        import requests
-        import base64
-        import io
-        from PIL import Image
-
-        img_path = _to_image_path(path)
-
-        # 压缩到 ≤900KB（免费层单文件上限 1MB），避免请求被拒
-        with Image.open(img_path) as im:
-            im = im.convert("RGB")
-            quality = 90
-            while True:
-                buf = io.BytesIO()
-                im.save(buf, format="JPEG", quality=quality)
-                size = buf.tell()
-                if size <= 900 * 1024 or quality <= 30:
-                    break
-                quality -= 15
-                if im.size[0] > 800:
-                    im = im.resize((int(im.size[0] * 0.8), int(im.size[1] * 0.8)))
-            b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
-
-        resp = requests.post(
-            "https://api.ocr.space/parse/image",
-            data={
-                "apikey": api_key,
-                "base64image": f"data:image/jpeg;base64,{b64}",
-                "language": "chs",
-                "isOverlayRequired": "false",
-                "scale": "true",
-                "OCREngine": "1",
-            },
-            timeout=30,
-        )
-        data = resp.json()
-        if data.get("IsErroredOnProcessing"):
-            logger.warning(f"OCR.space 处理失败: {data.get('ErrorMessage')}")
-            return None
-        results = data.get("ParsedResults") or []
-        if not results:
-            return None
-        raw = results[0].get("ParsedText", "")
-        texts = [ln.strip() for ln in raw.splitlines() if ln.strip()]
-        return _parse_structured(raw, texts)
-    except Exception as e:  # noqa
-        logger.warning(f"OCR.space OCR 调用失败: {e}")
-        return None
-
-
-def _to_float(v) -> float:
-    try:
-        return round(float(v), 2)
-    except (TypeError, ValueError):
-        return 0.0
-
-
-# ---------------------------------------------------------------------------
-# 引擎 2：本地 Tesseract（兜底）
+# 引擎：本地 Tesseract（含图像预处理与多尺度择优）
 # ---------------------------------------------------------------------------
 def _ocr_tesseract(path: str) -> Optional[Dict[str, Any]]:
+    """本地 Tesseract 识别，含图像预处理与多尺度择优。
+
+    零密钥、可离线。预处理：灰度 -> 对比度/锐度增强 -> 中值去噪 -> 多尺度放大，
+    对中文发票的小字与低对比度背景识别率有显著提升。
+    """
     try:
         import shutil
         if not shutil.which("tesseract"):
+            logger.warning("未检测到 tesseract 命令，跳过 OCR")
             return None
         import pytesseract
-        from PIL import Image
+        from PIL import Image, ImageEnhance, ImageFilter
+
         img_path = _to_image_path(path)
-        img = Image.open(img_path)
-        # 中文 + 英文
-        raw = pytesseract.image_to_string(img, lang="chi_sim+eng")
-        texts = [ln.strip() for ln in raw.splitlines() if ln.strip()]
-        return _parse_structured(raw, texts)
+        img = Image.open(img_path).convert("RGB")
+
+        candidates = []
+        for scale in (2.0, 1.5, 1.0):
+            im = img.resize(
+                (int(img.width * scale), int(img.height * scale)),
+                Image.Resampling.LANCZOS,
+            )
+            gray = im.convert("L")
+            gray = ImageEnhance.Contrast(gray).enhance(2.0)
+            gray = ImageEnhance.Sharpness(gray).enhance(2.0)
+            gray = gray.filter(ImageFilter.MedianFilter(3))
+            raw = pytesseract.image_to_string(gray, lang="chi_sim+eng", config="--psm 6")
+            texts = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+            candidates.append(_parse_structured(raw, texts))
+
+        # 择优：优先有金额，其次发票号、日期、税号，最后文本丰富度
+        best = max(
+            candidates,
+            key=lambda r: (
+                1 if r.get("total_amount") else 0,
+                1 if r.get("invoice_no") else 0,
+                1 if r.get("invoice_date") else 0,
+                1 if r.get("seller_tax_id") else 0,
+                len(r.get("raw_text", "")),
+            ),
+        )
+        return best
     except Exception as e:  # noqa
         logger.warning(f"Tesseract OCR 失败: {e}")
         return None
@@ -275,19 +233,12 @@ def _ocr_tesseract(path: str) -> Optional[Dict[str, Any]]:
 # 主入口
 # ---------------------------------------------------------------------------
 def ocr_invoice(image_path: str) -> Dict[str, Any]:
-    """识别发票，返回结构化字典；任何引擎失败都返回空结构（人工补录）。"""
-    # 1) OCR.space 免费 API
-    res = _ocr_ocrspace(image_path)
-    if res and res.get("total_amount"):
-        logger.info("使用 OCR.space OCR 识别成功")
-        return res
-    # 2) 本地 Tesseract 兜底
+    """识别发票，返回结构化字典；Tesseract 不可用时返回空结构（人工补录）。"""
     res = _ocr_tesseract(image_path)
-    if res and res.get("total_amount"):
-        logger.info("使用 Tesseract OCR 识别成功")
+    if res:
+        logger.info("使用 Tesseract OCR 识别")
         return res
-    # 3) 兜底：空结构
-    logger.info("无可用 OCR 引擎，返回空结构（人工补录）")
+    logger.info("Tesseract 不可用，返回空结构（人工补录）")
     return {
         "invoice_no": "", "invoice_date": "", "seller_name": "",
         "seller_tax_id": "", "buyer_name": "", "buyer_tax_id": "",
