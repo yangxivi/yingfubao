@@ -2,6 +2,10 @@
 // 图像预处理（灰度 + 对比度增强 + 多尺度）提升中文发票识别率；字段解析逻辑移植自后端 ocr_service.py。
 
 import Tesseract from 'tesseract.js';
+import * as pdfjsLib from 'pdfjs-dist';
+import workerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
 
 export interface OcrResult {
   invoice_no: string;
@@ -34,15 +38,15 @@ function loadImage(file: File): Promise<HTMLImageElement> {
   });
 }
 
-// 灰度 + 对比度增强（2.0），返回缩放后的 canvas 供 OCR
-function preprocess(img: HTMLImageElement, scale: number): HTMLCanvasElement {
-  const w = Math.max(1, Math.round(img.width * scale));
-  const h = Math.max(1, Math.round(img.height * scale));
+// 灰度 + 对比度增强（2.0），返回缩放后的 canvas 供 OCR（支持图片或已渲染的 canvas）
+function preprocess(src: HTMLImageElement | HTMLCanvasElement, scale: number): HTMLCanvasElement {
+  const w = Math.max(1, Math.round(src.width * scale));
+  const h = Math.max(1, Math.round(src.height * scale));
   const canvas = document.createElement('canvas');
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext('2d')!;
-  ctx.drawImage(img, 0, 0, w, h);
+  ctx.drawImage(src, 0, 0, w, h);
   const imageData = ctx.getImageData(0, 0, w, h);
   const d = imageData.data;
   for (let i = 0; i < d.length; i += 4) {
@@ -52,6 +56,27 @@ function preprocess(img: HTMLImageElement, scale: number): HTMLCanvasElement {
   }
   ctx.putImageData(imageData, 0, 0);
   return canvas;
+}
+
+// 将 PDF 逐页渲染为高分辨率图片（供 OCR）。返回每页的 canvas。
+async function pdfToImages(file: File): Promise<HTMLCanvasElement[]> {
+  const buf = await file.arrayBuffer();
+  const doc = await pdfjsLib.getDocument({ data: buf }).promise;
+  const out: HTMLCanvasElement[] = [];
+  for (let p = 1; p <= doc.numPages; p++) {
+    const page = await doc.getPage(p);
+    const base = page.getViewport({ scale: 1 });
+    // 放大到约 2.0 倍提升 OCR 清晰度（限制上限避免超大内存）
+    const scale = Math.min(2.0, 2400 / Math.max(base.width, base.height));
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(viewport.width);
+    canvas.height = Math.round(viewport.height);
+    const ctx = canvas.getContext('2d')!;
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    out.push(canvas);
+  }
+  return out;
 }
 
 function parseDate(text: string): string | null {
@@ -312,21 +337,43 @@ export async function recognizeInvoice(
   file: File,
   onProgress?: (p: number) => void,
 ): Promise<OcrResult> {
-  const img = await loadImage(file);
+  // 1. 载入源：PDF 逐页渲染为图片；图片直接加载
+  const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+  const sources: (HTMLImageElement | HTMLCanvasElement)[] = [];
+  if (isPdf) {
+    try {
+      sources.push(...(await pdfToImages(file)));
+    } catch (e) {
+      throw new Error('PDF 解析失败：文件可能损坏或加密');
+    }
+  } else {
+    sources.push(await loadImage(file));
+  }
+  if (sources.length === 0) throw new Error('未能从文件中提取图像');
+
+  // 2. 每页 × 多尺度 OCR，收集候选
   const scales = [2.0, 1.0];
+  const stepCount = sources.length * scales.length;
+  let stepDone = 0;
   const cands: OcrResult[] = [];
-  for (const s of scales) {
-    const canvas = preprocess(img, s);
-    const res = await Tesseract.recognize(canvas, 'chi_sim+eng', {
-      logger: (m: any) => {
-        if (m.status === 'recognizing text' && onProgress) onProgress(m.progress);
-      },
-    });
-    const lines = res.data.text
-      .split('\n')
-      .map((l: string) => l.trim())
-      .filter(Boolean);
-    cands.push(parseStructured(res.data.text, lines));
+  for (const src of sources) {
+    for (const s of scales) {
+      const canvas = preprocess(src, s);
+      const res = await Tesseract.recognize(canvas, 'chi_sim+eng', {
+        logger: (m: any) => {
+          if (m.status === 'recognizing text' && onProgress) {
+            const frac = (stepDone + m.progress) / stepCount;
+            onProgress(Math.min(1, frac));
+          }
+        },
+      });
+      const lines = res.data.text
+        .split('\n')
+        .map((l: string) => l.trim())
+        .filter(Boolean);
+      cands.push(parseStructured(res.data.text, lines));
+      stepDone += 1;
+    }
   }
   return pickBest(cands);
 }

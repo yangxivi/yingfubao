@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Table, Button, Upload, Space, Input, Select, Tag, Modal, Descriptions,
   message, Popconfirm, Card, Row, Col, Drawer, Form, DatePicker,
@@ -26,6 +26,7 @@ export default function InvoiceListPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
+  const uploadQueue = useRef<Promise<any>>(Promise.resolve());
 
   const fetchInvoices = async () => {
     setLoading(true);
@@ -50,17 +51,24 @@ export default function InvoiceListPage() {
   useEffect(() => { fetchInvoices(); }, [pagination.current]);
   useEffect(() => { fetchSuppliers(); }, []);
 
-  const handleUpload: UploadProps['customRequest'] = async (options: any) => {
-    setUploading(true);
-    try {
-      await invoiceApi.upload(options.file);
-      message.success('发票上传并识别成功');
-      fetchInvoices();
-    } catch (err: any) {
-      message.error(err.response?.data?.detail || '上传失败');
-    } finally {
-      setUploading(false);
-    }
+  const handleUpload: UploadProps['customRequest'] = (options: any) => {
+    const run = async () => {
+      try {
+        setUploading(true);
+        await invoiceApi.upload(options.file);
+        options.onSuccess?.({});
+        message.success(`已识别：${options.file.name}`);
+        fetchInvoices();
+      } catch (err: any) {
+        options.onError?.(err);
+        const detail = err?.response?.data?.detail || err?.message || '上传失败';
+        message.error(`${options.file.name}：${detail}`);
+      } finally {
+        setUploading(false);
+      }
+    };
+    // 串行处理，避免多文件并发 OCR 卡死
+    uploadQueue.current = uploadQueue.current.then(run);
   };
 
   const handleDelete = async (id: number) => {
@@ -159,6 +167,7 @@ export default function InvoiceListPage() {
         <Dragger
           customRequest={handleUpload}
           showUploadList={false}
+          multiple
           accept=".png,.jpg,.jpeg,.pdf,.bmp,.tiff"
           disabled={uploading}
         >
