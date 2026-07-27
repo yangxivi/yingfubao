@@ -1,38 +1,44 @@
 import { useState, useRef } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Layout as AntLayout, Menu, Button, Avatar, Dropdown, theme, message, Modal } from 'antd';
+import { Button, Avatar, Dropdown, theme, message, Modal } from 'antd';
 import {
   DashboardOutlined,
   FileTextOutlined,
+  UploadOutlined,
   TeamOutlined,
   BellOutlined,
   LogoutOutlined,
   UserOutlined,
-  MenuFoldOutlined,
-  MenuUnfoldOutlined,
   DownloadOutlined,
-  UploadOutlined,
+  ImportOutlined,
 } from '@ant-design/icons';
 import { getCurrentUserId } from '../lib/auth';
 import { exportUserBackup, importUserBackup, isBackupFile } from '../lib/db';
 
-const { Header, Sider, Content } = AntLayout;
-
-const menuItems = [
+const navItems = [
   { key: '/', icon: <DashboardOutlined />, label: '仪表盘' },
-  { key: '/invoices', icon: <FileTextOutlined />, label: '发票管理' },
+  { key: '/invoices', icon: <UploadOutlined />, label: '发票上传' },
+  { key: '/invoice-list', icon: <FileTextOutlined />, label: '发票管理' },
   { key: '/suppliers', icon: <TeamOutlined />, label: '供应商管理' },
-  { key: '/reminders', icon: <BellOutlined />, label: '到期提醒' },
 ];
 
 export default function Layout() {
-  const [collapsed, setCollapsed] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
   const navigate = useNavigate();
   const location = useLocation();
-  const { token: themeToken } = theme.useToken();
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 当前激活的 nav key
+  const activeKey = (() => {
+    const path = location.pathname;
+    if (path === '/' || path === '') return '/';
+    if (path.startsWith('/invoices') && !path.startsWith('/invoice-list')) return '/invoices';
+    if (path.startsWith('/invoice-list')) return '/invoice-list';
+    if (path.startsWith('/suppliers')) return '/suppliers';
+    if (path.startsWith('/reminders')) return '/'; // 提醒页归入仪表盘
+    return '/' + path.split('/')[1];
+  })();
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -43,17 +49,14 @@ export default function Layout() {
   // ===== 导出 / 导入 JSON 备份 =====
   const handleExport = () => {
     const userId = getCurrentUserId();
-    if (!userId) {
-      messageApi.error('请先登录');
-      return;
-    }
+    if (!userId) { messageApi.error('请先登录'); return; }
     const backup = exportUserBackup(userId);
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     const ts = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
     a.href = url;
-    a.download = `yingfubao-备份-${ts}.json`;
+    a.download = `yingfubao-backup-${ts}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -63,16 +66,13 @@ export default function Layout() {
 
   const handleImportClick = () => {
     const userId = getCurrentUserId();
-    if (!userId) {
-      messageApi.error('请先登录');
-      return;
-    }
+    if (!userId) { messageApi.error('请先登录'); return; }
     fileInputRef.current?.click();
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    e.target.value = ''; // 允许重复选择同一文件
+    e.target.value = '';
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
@@ -115,76 +115,55 @@ export default function Layout() {
   };
 
   return (
-    <AntLayout style={{ minHeight: '100vh' }}>
+    <div style={{ minHeight: '100vh', background: '#f5f7fa' }}>
       {contextHolder}
-      <Sider
-        trigger={null}
-        collapsible
-        collapsed={collapsed}
-        breakpoint="lg"
-        style={{ background: themeToken.colorBgContainer }}
-      >
-        <div style={{
-          height: 48,
-          margin: 16,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontWeight: 700,
-          fontSize: collapsed ? 16 : 20,
-          color: themeToken.colorPrimary,
-          cursor: 'pointer',
-        }} onClick={() => navigate('/')}>
-          {collapsed ? '💰' : '💰 应付宝'}
+
+      {/* 顶部导航栏 */}
+      <header className="yb-navbar">
+        <div className="yb-navbar-brand" onClick={() => navigate('/')}>
+          <span className="brand-icon">📋</span>
+          应付宝
         </div>
-        <Menu
-          mode="inline"
-          selectedKeys={[location.pathname === '/' ? '/' : `/${location.pathname.split('/')[1]}`]}
-          items={menuItems}
-          onClick={({ key }) => navigate(key)}
-          style={{ border: 'none' }}
-        />
-      </Sider>
-      <AntLayout>
-        <Header style={{
-          background: themeToken.colorBgContainer,
-          padding: '0 24px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
-        }}>
-          <Button
-            type="text"
-            icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-            onClick={() => setCollapsed(!collapsed)}
+
+        <nav className="yb-nav-links">
+          {navItems.map((item) => (
+            <div
+              key={item.key}
+              className={`yb-nav-link ${activeKey === item.key ? 'active' : ''}`}
+              onClick={() => navigate(item.key)}
+            >
+              {item.label}
+            </div>
+          ))}
+        </nav>
+
+        <div className="yb-navbar-right">
+          <Button type="text" size="small" icon={<DownloadOutlined />} onClick={handleExport}>
+            导出备份
+          </Button>
+          <Button type="text" size="small" icon={<ImportOutlined />} onClick={handleImportClick}>
+            导入备份
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/json,.json"
+            style={{ display: 'none' }}
+            onChange={handleFileChange}
           />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Button icon={<DownloadOutlined />} onClick={handleExport}>
-              导出备份
-            </Button>
-            <Button icon={<UploadOutlined />} onClick={handleImportClick}>
-              导入备份
-            </Button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="application/json,.json"
-              style={{ display: 'none' }}
-              onChange={handleFileChange}
-            />
-            <Dropdown menu={userMenu} placement="bottomRight">
-              <div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Avatar icon={<UserOutlined />} />
-                <span>{user.username || '用户'}</span>
-              </div>
-            </Dropdown>
-          </div>
-        </Header>
-        <Content style={{ margin: 16, padding: 24, background: themeToken.colorBgContainer, borderRadius: 8, minHeight: 360 }}>
-          <Outlet />
-        </Content>
-      </AntLayout>
-    </AntLayout>
+          <Dropdown menu={userMenu} placement="bottomRight">
+            <div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Avatar size={30} icon={<UserOutlined />} style={{ fontSize: 14 }} />
+              <span style={{ fontSize: 13, color: '#666' }}>{user.username || '用户'}</span>
+            </div>
+          </Dropdown>
+        </div>
+      </header>
+
+      {/* 主内容区 */}
+      <main style={{ padding: '24px 32px', maxWidth: '1400px', margin: '0 auto' }}>
+        <Outlet />
+      </main>
+    </div>
   );
 }

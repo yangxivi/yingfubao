@@ -1,21 +1,19 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import {
-  Table, Button, Upload, Space, Input, Select, Tag, Modal, Descriptions,
+  Table, Button, Space, Input, Select, Tag, Modal, Descriptions,
   message, Popconfirm, Card, Row, Col, Drawer, Form, DatePicker,
-  Checkbox, Statistic, Image, Tooltip,
+  Checkbox, Statistic, Image, Tooltip, Collapse,
 } from 'antd';
 import {
-  UploadOutlined, SearchOutlined, DeleteOutlined, EditOutlined,
-  EyeOutlined, PlusOutlined, InboxOutlined, DownloadOutlined,
-  PictureOutlined,
+  SearchOutlined, DeleteOutlined, EditOutlined,
+  EyeOutlined, PlusOutlined, DownloadOutlined,
+  PictureOutlined, FilterOutlined, ExportOutlined,
+  FileTextOutlined,
 } from '@ant-design/icons';
-import type { UploadProps } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { TableRowSelection as AntTableRowSelection } from 'antd/es/table/interface';
 import { invoiceApi, supplierApi } from '../api/client';
 import dayjs from 'dayjs';
-
-const { Dragger } = Upload;
 
 export default function InvoiceListPage() {
   const [invoices, setInvoices] = useState<any[]>([]);
@@ -24,21 +22,21 @@ export default function InvoiceListPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [supplierFilter, setSupplierFilter] = useState(0);
   const [suppliers, setSuppliers] = useState<any[]>([]);
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<string>('');
   const [detailOpen, setDetailOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
-  const uploadQueue = useRef<Promise<any>>(Promise.resolve());
 
   // 多选
   const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
 
-  // 高级筛选
+  // 高级筛选（可折叠）
+  const [filterExpanded, setFilterExpanded] = useState(false);
   const [dateFrom, setDateFrom] = useState<dayjs.Dayjs | null>(null);
   const [dateTo, setDateTo] = useState<dayjs.Dayjs | null>(null);
+  const [payDateFrom, setPayDateFrom] = useState<dayjs.Dayjs | null>(null);
+  const [payDateTo, setPayDateTo] = useState<dayjs.Dayjs | null>(null);
   const [amountMin, setAmountMin] = useState<number | undefined>();
   const [amountMax, setAmountMax] = useState<number | undefined>();
 
@@ -54,6 +52,8 @@ export default function InvoiceListPage() {
       if (supplierFilter) params.supplier_id = supplierFilter;
       if (dateFrom) params.date_from = dateFrom.format('YYYY-MM-DD');
       if (dateTo) params.date_to = dateTo.format('YYYY-MM-DD');
+      if (payDateFrom) params.pay_date_from = payDateFrom.format('YYYY-MM-DD');
+      if (payDateTo) params.pay_date_to = payDateTo.format('YYYY-MM-DD');
       if (amountMin !== undefined) params.amount_min = amountMin;
       if (amountMax !== undefined) params.amount_max = amountMax;
       const res = await invoiceApi.list(params);
@@ -79,32 +79,6 @@ export default function InvoiceListPage() {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
     return Math.round((pd.getTime() - now.getTime()) / 86400000);
-  };
-
-  const handleUpload: UploadProps['customRequest'] = (options: any) => {
-    const run = async () => {
-      try {
-        setUploading(true);
-        const res = await invoiceApi.upload(options.file, (cur: number, total: number) => {
-          setUploadProgress(`正在识别第 ${cur} 张 / 共 ${total} 张`);
-        });
-        options.onSuccess?.({});
-        const inv = res.data as any;
-        // 提示识别结果 + 供应商自动建档信息
-        const supName = inv.supplier_name || inv.seller_name || '未知';
-        message.success(`✅ ${options.file.name} 已识别，供应商「${supName}」已自动建档`);
-        fetchInvoices();
-        fetchSuppliers(); // 刷新供应商列表
-      } catch (err: any) {
-        options.onError?.(err);
-        const detail = err?.response?.data?.detail || err?.message || '上传失败';
-        message.error(`${options.file.name}：${detail}`);
-      } finally {
-        setUploading(false);
-        setUploadProgress('');
-      }
-    };
-    uploadQueue.current = uploadQueue.current.then(run);
   };
 
   const handleDelete = async (id: number) => {
@@ -153,7 +127,7 @@ export default function InvoiceListPage() {
   };
 
   // 详情页上传/更换发票图片
-  const handleDetailImageUpload: UploadProps['customRequest'] = async (options: any) => {
+  const handleDetailImageUpload: any = async (options: any) => {
     if (!selectedInvoice) return;
     try {
       setDetailUploading(true);
@@ -184,56 +158,118 @@ export default function InvoiceListPage() {
     };
   }, [invoices, selectedRowKeys]);
 
+  // 全局汇总
+  const globalSummary = useMemo(() => {
+    const paidCount = invoices.filter((i) => i.status === 'paid').length;
+    const pendingCount = invoices.filter((i) => i.status === 'pending').length;
+    const overdueCount = invoices.filter((i) => i.status === 'overdue').length;
+    const totalAmount = Math.round(invoices.reduce((s, i) => s + (i.total_amount || 0), 0) * 100) / 100;
+    return { count: invoices.length, paidCount, pendingCount, overdueCount, totalAmount };
+  }, [invoices]);
+
   // 列定义
   const columns: ColumnsType<any> = [
-    { title: '发票号码', dataIndex: 'invoice_no', key: 'no', width: 180, ellipsis: true, sorter: (a, b) => (a.invoice_no || '').localeCompare(b.invoice_no || '') },
-    { title: '供应商', dataIndex: 'supplier_name', key: 'supplier', width: 180, ellipsis: true, sorter: (a, b) => (a.supplier_name || '').localeCompare(b.supplier_name || '') },
-    { title: '开票日期', dataIndex: 'invoice_date', key: 'inv_date', width: 110, sorter: (a, b) => (a.invoice_date || '').localeCompare(b.invoice_date || '') },
-    { title: '付款日期', dataIndex: 'payment_date', key: 'pay_date', width: 110, sorter: (a, b) => (a.payment_date || '').localeCompare(b.payment_date || '') },
     {
-      title: '价税合计', dataIndex: 'total_amount', key: 'amount', width: 120,
-      sorter: (a, b) => (a.total_amount || 0) - (b.total_amount || 0),
-      render: (v: number) => <b style={{ color: '#cf1322' }}>¥{v.toLocaleString()}</b>,
+      title: '发票号码',
+      dataIndex: 'invoice_no',
+      key: 'no',
+      width: 180,
+      ellipsis: true,
+      render: (v: string) => (
+        <span style={{ color: '#1677ff' }}>
+          <FileTextOutlined style={{ marginRight: 6 }} />
+          {v}
+        </span>
+      ),
+      sorter: (a, b) => (a.invoice_no || '').localeCompare(b.invoice_no || ''),
     },
     {
-      title: '剩余天数', key: 'days_left', width: 90,
+      title: '供应商',
+      dataIndex: 'supplier_name',
+      key: 'supplier',
+      width: 200,
+      ellipsis: true,
+      sorter: (a, b) => (a.supplier_name || '').localeCompare(b.supplier_name || ''),
+    },
+    {
+      title: '开票日期',
+      dataIndex: 'invoice_date',
+      key: 'inv_date',
+      width: 110,
+      sorter: (a, b) => (a.invoice_date || '').localeCompare(b.invoice_date || ''),
+    },
+    {
+      title: '付款日期',
+      dataIndex: 'payment_date',
+      key: 'pay_date',
+      width: 110,
+      sorter: (a, b) => (a.payment_date || '').localeCompare(b.payment_date || ''),
+    },
+    {
+      title: '剩余天数',
+      key: 'days_left',
+      width: 90,
       sorter: (a, b) => (daysLeft(a.payment_date) ?? 9999) - (daysLeft(b.payment_date) ?? 9999),
       render: (_: any, record: any) => {
         const dl = daysLeft(record.payment_date);
         if (dl === null) return '-';
-        if (dl < 0) return <span style={{ color: '#cf1322', fontWeight: 600 }}>{Math.abs(dl)}天逾期</span>;
+        if (dl < 0) return <span style={{ color: '#cf1322', fontWeight: 600 }}>{Math.abs(dl)}天</span>;
         if (dl <= 7) return <span style={{ color: '#fa8c16', fontWeight: 600 }}>{dl}天</span>;
-        if (dl <= 30) return <span style={{ color: '#1890ff' }}>{dl}天</span>;
         return <span>{dl}天</span>;
       },
     },
     {
-      title: '状态', dataIndex: 'status', key: 'status', width: 90,
-      filters: [
-        { text: '待付款', value: 'pending' },
-        { text: '已付款', value: 'paid' },
-        { text: '已逾期', value: 'overdue' },
-      ],
-      onFilter: (value, record) => record.status === value,
+      title: '金额',
+      dataIndex: 'total_amount',
+      key: 'amount',
+      width: 120,
+      sorter: (a, b) => (a.total_amount || 0) - (b.total_amount || 0),
+      render: (v: number) => <b style={{ color: '#1677ff' }}>¥{v.toLocaleString()}</b>,
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      key: 'status',
+      width: 90,
       render: (s: string) => {
-        const map: any = { pending: { color: 'orange', text: '待付款' }, paid: { color: 'green', text: '已付款' }, overdue: { color: 'red', text: '已逾期' } };
+        const map: any = { pending: { color: 'orange', text: '待付款' }, paid: { color: 'green', text: '已付' }, overdue: { color: 'red', text: '已逾期' } };
         const info = map[s] || { color: 'default', text: s };
         return <Tag color={info.color}>{info.text}</Tag>;
       },
     },
     {
-      title: '操作', key: 'action', width: 200, fixed: 'right' as const,
+      title: '附件',
+      key: 'thumb',
+      width: 60,
+      render: (_: any, record: any) =>
+        record.image_data ? (
+          <Image
+            src={record.image_data}
+            width={36}
+            height={28}
+            style={{ borderRadius: 4, objectFit: 'cover', cursor: 'pointer' }}
+            preview={{ src: record.image_data }}
+          />
+        ) : (
+          <span style={{ color: '#d9d9d9' }}>—</span>
+        ),
+    },
+    {
+      title: '操作',
+      key: 'action',
+      width: 160,
+      fixed: 'right' as const,
       render: (_: any, record: any) => (
-        <Space size="small">
-          <Button size="small" icon={<EyeOutlined />} onClick={() => { setSelectedInvoice(record); setDetailOpen(true); }}>详情</Button>
-          <Button size="small" icon={<EditOutlined />} onClick={() => { setSelectedInvoice(record); setEditOpen(true); }}>编辑</Button>
+        <Space size={2}>
+          <Tooltip title="查看"><Button type="text" size="small" icon={<EyeOutlined />} onClick={() => { setSelectedInvoice(record); setDetailOpen(true); }} /></Tooltip>
+          <Tooltip title="编辑"><Button type="text" size="small" icon={<EditOutlined />} onClick={() => { setSelectedInvoice(record); setEditOpen(true); }} /></Tooltip>
           {record.status !== 'paid' && (
             <Popconfirm title="确认已付款?" onConfirm={() => handleMarkPaid(record.id)}>
-              <Button size="small" type="primary" ghost>已付款</Button>
+              <Button type="text" size="small" style={{ color: '#52c41a' }}>已付</Button>
             </Popconfirm>
           )}
           <Popconfirm title="确认删除?" onConfirm={() => handleDelete(record.id)}>
-            <Button size="small" danger icon={<DeleteOutlined />} />
+            <Button type="text" size="small" danger icon={<DeleteOutlined />} />
           </Popconfirm>
         </Space>
       ),
@@ -249,85 +285,153 @@ export default function InvoiceListPage() {
 
   return (
     <div>
-      <h2 style={{ marginBottom: 16 }}>发票管理</h2>
+      {/* 页面标题 */}
+      <div className="yb-page-header">
+        <h2>发票管理</h2>
+        <p>管理所有发票信息</p>
+      </div>
 
-      {/* 上传区域 */}
-      <Card style={{ marginBottom: 16 }}>
-        <Space style={{ marginBottom: 12 }}>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>新增发票</Button>
-          {uploadProgress && (
-            <Tag color="processing" style={{ fontSize: 13 }}>{uploadProgress}</Tag>
-          )}
-        </Space>
-        <Dragger
-          customRequest={handleUpload}
-          showUploadList={false}
-          multiple
-          accept=".png,.jpg,.jpeg,.pdf,.bmp,.tiff"
-          disabled={uploading}
+      {/* 工具栏 */}
+      <div className="yb-toolbar">
+        <div className="yb-toolbar-left">
+          <Input
+            prefix={<SearchOutlined />}
+            placeholder="搜索发票号码或供应商名称..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onPressEnter={fetchInvoices}
+            allowClear
+            style={{ width: 280 }}
+          />
+          <Select
+            placeholder="全部状态"
+            allowClear
+            style={{ width: 120 }}
+            value={statusFilter || undefined}
+            onChange={(v) => { setStatusFilter(v || ''); setTimeout(fetchInvoices, 50); }}
+          >
+            <Select.Option value="pending">待付款</Select.Option>
+            <Select.Option value="paid">已付</Select.Option>
+            <Select.Option value="overdue">已逾期</Select.Option>
+          </Select>
+        </div>
+        <div className="yb-toolbar-right">
+          <Button icon={<ExportOutlined />}>导出 Excel</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+            添加发票
+          </Button>
+        </div>
+      </div>
+
+      {/* 高级筛选面板 */}
+      <Collapse
+        ghost
+        activeKey={filterExpanded ? ['1'] : []}
+        onChange={(keys) => setFilterExpanded(keys.includes('1'))}
+        style={{ marginBottom: 16 }}
+      >
+        <Collapse.Panel
+          header={
+            <span style={{ fontSize: 13, color: filterExpanded ? '#1677ff' : '#666' }}>
+              <FilterOutlined style={{ marginRight: 6 }} />
+              高级筛选
+              {filterExpanded && <span style={{ marginLeft: 8, fontSize: 12, color: '#999' }}>（点击收起）</span>}
+            </span>
+          }
+          key="1"
         >
-          <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-          <p className="ant-upload-text">点击或拖拽发票图片/PDF到此处上传</p>
-          <p className="ant-upload-hint">支持 PNG / JPG / PDF / BMP / TIFF，自动OCR识别（可批量选择）</p>
-        </Dragger>
-      </Card>
+          <div className="yb-filter-panel">
+            <Row gutter={[16, 12]}>
+              <Col xs={24} sm={8}>
+                <div className="yb-filter-group">
+                  <label>📦 供应商</label>
+                  <Select
+                    placeholder="全部供应商"
+                    allowClear showSearch optionFilterProp="children"
+                    style={{ width: '100%' }}
+                    value={supplierFilter || undefined}
+                    onChange={(v) => setSupplierFilter(v || 0)}
+                  >
+                    {suppliers.map((s: any) => (
+                      <Select.Option key={s.id} value={s.id}>{s.name}</Select.Option>
+                    ))}
+                  </Select>
+                </div>
+              </Col>
+              <Col xs={12} sm={8}>
+                <div className="yb-filter-group">
+                  <label>📅 开票日期（起）</label>
+                  <DatePicker style={{ width: '100%' }} value={dateFrom} onChange={(d) => setDateFrom(d)} format="YYYY-MM-DD" placeholder="年-月-日" />
+                </div>
+              </Col>
+              <Col xs={12} sm={8}>
+                <div className="yb-filter-group">
+                  <label>📅 开票日期（止）</label>
+                  <DatePicker style={{ width: '100%' }} value={dateTo} onChange={(d) => setDateTo(d)} format="YYYY-MM-DD" placeholder="年-月-日" />
+                </div>
+              </Col>
+              <Col xs={12} sm={8}>
+                <div className="yb-filter-group">
+                  <label>💰 付款日期（起）</label>
+                  <DatePicker style={{ width: '100%' }} value={payDateFrom} onChange={(d) => setPayDateFrom(d)} format="YYYY-MM-DD" placeholder="年-月-日" />
+                </div>
+              </Col>
+              <Col xs={12} sm={8}>
+                <div className="yb-filter-group">
+                  <label>💰 付款日期（止）</label>
+                  <DatePicker style={{ width: '100%' }} value={payDateTo} onChange={(d) => setPayDateTo(d)} format="YYYY-MM-DD" placeholder="年-月-日" />
+                </div>
+              </Col>
+              <Col xs={12} sm={8}>
+                <div className="yb-filter-group">
+                  <label>💵 最小金额（元）</label>
+                  <Input type="number" placeholder="0.00" value={amountMin} onChange={(e) => setAmountMin(e.target.value ? Number(e.target.value) : undefined)} prefix="¥" allowClear />
+                </div>
+              </Col>
+              <Col xs={24} sm={8}>
+                <div className="yb-filter-group">
+                  <label>💵 最大金额（元）</label>
+                  <Input type="number" placeholder="0.00" value={amountMax} onChange={(e) => setAmountMax(e.target.value ? Number(e.target.value) : undefined)} prefix="¥" allowClear />
+                </div>
+              </Col>
+            </Row>
+            <div style={{ textAlign: 'right', marginTop: 12 }}>
+              <Space>
+                <Button
+                  icon={<CloseCircleOutlined />}
+                  onClick={() => {
+                    setSearch('');
+                    setStatusFilter('');
+                    setSupplierFilter(0);
+                    setDateFrom(null);
+                    setDateTo(null);
+                    setPayDateFrom(null);
+                    setPayDateTo(null);
+                    setAmountMin(undefined);
+                    setAmountMax(undefined);
+                    setTimeout(fetchInvoices, 50);
+                  }}
+                >
+                  清除筛选
+                </Button>
+                <Button type="primary" icon={<SearchOutlined />} onClick={fetchInvoices}>查询</Button>
+              </Space>
+            </div>
+          </div>
+        </Collapse.Panel>
+      </Collapse>
 
-      {/* 筛选区域 */}
-      <Card style={{ marginBottom: 16 }}>
-        <Row gutter={[12, 12]}>
-          <Col xs={24} sm={6}>
-            <Input prefix={<SearchOutlined />} placeholder="搜索发票号码" value={search} onChange={(e) => setSearch(e.target.value)} onPressEnter={fetchInvoices} allowClear />
-          </Col>
-          <Col xs={12} sm={4}>
-            <Select placeholder="状态筛选" allowClear style={{ width: '100%' }} value={statusFilter || undefined} onChange={(v) => { setStatusFilter(v || ''); }}>
-              <Select.Option value="pending">待付款</Select.Option>
-              <Select.Option value="paid">已付款</Select.Option>
-              <Select.Option value="overdue">已逾期</Select.Option>
-            </Select>
-          </Col>
-          <Col xs={12} sm={5}>
-            <Select placeholder="供应商筛选" allowClear showSearch optionFilterProp="children" style={{ width: '100%' }} value={supplierFilter || undefined} onChange={(v) => setSupplierFilter(v || 0)}>
-              {suppliers.map((s: any) => (
-                <Select.Option key={s.id} value={s.id}>{s.name}</Select.Option>
-              ))}
-            </Select>
-          </Col>
-          <Col xs={12} sm={4}>
-            <DatePicker placeholder="开始日期" style={{ width: '100%' }} value={dateFrom} onChange={(d) => setDateFrom(d)} format="YYYY-MM-DD" />
-          </Col>
-          <Col xs={12} sm={4}>
-            <DatePicker placeholder="结束日期" style={{ width: '100%' }} value={dateTo} onChange={(d) => setDateTo(d)} format="YYYY-MM-DD" />
-          </Col>
-        </Row>
-        <Row gutter={[12, 12]} style={{ marginTop: 8 }}>
-          <Col xs={10} sm={4}>
-            <Input type="number" placeholder="金额最小(¥)" value={amountMin} onChange={(e) => setAmountMin(e.target.value ? Number(e.target.value) : undefined)} prefix="¥" allowClear />
-          </Col>
-          <Col xs={10} sm={4}>
-            <Input type="number" placeholder="金额最大(¥)" value={amountMax} onChange={(e) => setAmountMax(e.target.value ? Number(e.target.value) : undefined)} prefix="¥" allowClear />
-          </Col>
-          <Col xs={4} sm={2}>
-            <Button type="primary" onClick={fetchInvoices} block icon={<SearchOutlined />}>查询</Button>
-          </Col>
-          <Col xs={4} sm={2}>
-            <Button onClick={() => { setSearch(''); setStatusFilter(''); setSupplierFilter(0); setDateFrom(null); setDateTo(null); setAmountMin(undefined); setAmountMax(undefined); setTimeout(fetchInvoices, 50); }} block>重置</Button>
-          </Col>
-        </Row>
-      </Card>
-
-      {/* 表格 + 多选汇总 */}
-      <Card>
+      {/* 表格区域 */}
+      <Card bodyStyle={{ padding: 0 }}>
         {/* 多选汇总栏 */}
         {selectedRowKeys.length > 0 && (
           <div style={{
             background: '#e6f7ff',
-            border: '1px solid #91d5ff',
-            borderRadius: 4,
-            padding: '8px 16px',
-            marginBottom: 12,
+            borderBottom: '1px solid #91d5ff',
+            padding: '10px 20px',
             display: 'flex',
             alignItems: 'center',
-            gap: 16,
+            gap: 32,
           }}>
             <Checkbox
               checked={selectedRowKeys.length === invoices.length && invoices.length > 0}
@@ -359,9 +463,29 @@ export default function InvoiceListPage() {
             onChange: (page, size) => setPagination((p) => ({ ...p, current: page, pageSize: size })),
           }}
         />
+
+        {/* 底部固定汇总栏 */}
+        <div className="yb-summary-bar">
+          <div className="yb-summary-item">
+            <div className="summary-label">发票总数</div>
+            <div className="summary-value">{globalSummary.count}</div>
+          </div>
+          <div className="yb-summary-item summary-primary">
+            <div className="summary-label">金额合计</div>
+            <div className="summary-value">¥{globalSummary.totalAmount.toLocaleString()}</div>
+          </div>
+          <div className="yb-summary-item summary-success">
+            <div className="summary-label">待付款</div>
+            <div className="summary-value">{globalSummary.pendingCount}</div>
+          </div>
+          <div className="yb-summary-item summary-danger">
+            <div className="summary-label">已逾期</div>
+            <div className="summary-value">{globalSummary.overdueCount}</div>
+          </div>
+        </div>
       </Card>
 
-      {/* Detail Drawer —— 含图片展示与上传 */}
+      {/* Detail Drawer */}
       <Drawer
         title="发票详情"
         open={detailOpen}
@@ -377,7 +501,6 @@ export default function InvoiceListPage() {
       >
         {selectedInvoice && (
           <>
-            {/* 发票图片 */}
             {selectedInvoice.image_data && (
               <div style={{ textAlign: 'center', marginBottom: 16 }}>
                 <Image
@@ -388,7 +511,6 @@ export default function InvoiceListPage() {
                 />
               </div>
             )}
-
             <Descriptions column={1} bordered size="small">
               <Descriptions.Item label="发票号码">{selectedInvoice.invoice_no}</Descriptions.Item>
               <Descriptions.Item label="供应商">{selectedInvoice.supplier_name}</Descriptions.Item>
