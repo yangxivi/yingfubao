@@ -85,12 +85,16 @@ export default function InvoiceListPage() {
     const run = async () => {
       try {
         setUploading(true);
-        await invoiceApi.upload(options.file, (cur: number, total: number) => {
+        const res = await invoiceApi.upload(options.file, (cur: number, total: number) => {
           setUploadProgress(`正在识别第 ${cur} 张 / 共 ${total} 张`);
         });
         options.onSuccess?.({});
-        message.success(`已识别：${options.file.name}`);
+        const inv = res.data as any;
+        // 提示识别结果 + 供应商自动建档信息
+        const supName = inv.supplier_name || inv.seller_name || '未知';
+        message.success(`✅ ${options.file.name} 已识别，供应商「${supName}」已自动建档`);
         fetchInvoices();
+        fetchSuppliers(); // 刷新供应商列表
       } catch (err: any) {
         options.onError?.(err);
         const detail = err?.response?.data?.detail || err?.message || '上传失败';

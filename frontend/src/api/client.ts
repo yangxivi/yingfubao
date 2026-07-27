@@ -68,34 +68,45 @@ function decorate(inv: Invoice, suppliers: Supplier[]): any {
   };
 }
 
-// 按名称查找或创建供应商，返回 id（name 为空返回 null）
+// 按名称查找或创建供应商（支持模糊匹配），返回 id（name 为空返回 null）
 function ensureSupplier(userId: number, name?: string, taxId?: string): number | null {
   const nm = (name || '').trim();
   if (!nm) return null;
   const db = readDB();
-  const existing = db.suppliers.find(
+
+  // 1. 精确匹配（trim 后相等）
+  let existing = db.suppliers.find(
     (s) => s.userId === userId && s.name.trim() === nm,
   );
   if (existing) {
-    // 若提供了税号且原为空，补全
-    if (taxId && !existing.tax_id) {
-      existing.tax_id = taxId;
-      writeDB(db);
-    }
+    if (taxId && !existing.tax_id) { existing.tax_id = taxId; writeDB(db); }
     return existing.id;
   }
+
+  // 2. 模糊匹配：包含关系（处理 OCR 识别偏差，如多/少字、后缀差异）
+  existing = db.suppliers.find((s) => {
+    if (s.userId !== userId) return false;
+    const sn = s.name.trim();
+    return sn.includes(nm) || nm.includes(sn);
+  });
+  if (existing) {
+    if (taxId && !existing.tax_id) { existing.tax_id = taxId; writeDB(db); }
+    return existing.id;
+  }
+
+  // 3. 未找到 → 自动创建供应商（联系人/电话/地址留空供后续手动填写）
   const id = nextId(db, 'suppliers');
   const sup: Supplier = {
     id,
     userId,
     name: nm,
     tax_id: taxId || '',
-    contact_person: '',
-    phone: '',
-    address: '',
+    contact_person: '',   // 待手动填写
+    phone: '',           // 待手动填写
+    address: '',         // 待手动填写
     bank_name: '',
     bank_account: '',
-    notes: '',
+    notes: '由发票 OCR 自动创建',
     created_at: new Date().toISOString(),
   };
   db.suppliers.push(sup);

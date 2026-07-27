@@ -77,6 +77,7 @@ export default function SupplierListPage() {
     { title: '税号', dataIndex: 'tax_id', key: 'tax_id', width: 180, ellipsis: true },
     { title: '联系人', dataIndex: 'contact_person', key: 'contact', width: 80 },
     { title: '电话', dataIndex: 'phone', key: 'phone', width: 130 },
+    { title: '地址', dataIndex: 'address', key: 'address', width: 220, ellipsis: true },
     {
       title: '发票数', dataIndex: 'invoice_count', key: 'count', width: 80,
       render: (v: number) => <Tag color="blue">{v}</Tag>,
