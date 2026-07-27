@@ -10,7 +10,7 @@ RUN npm run build
 FROM python:3.11-slim
 WORKDIR /app
 
-# 系统依赖（pymupdf 需要，tencentcloud-sdk 纯 python）
+# 系统依赖（pymupdf 需要；后端纯 Python 依赖经 pip 安装）
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr tesseract-ocr-chi-sim \
     && rm -rf /var/lib/apt/lists/*

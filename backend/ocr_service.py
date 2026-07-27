@@ -2,10 +2,10 @@
 Invoice OCR Service - 增值税发票自动识别
 
 识别引擎优先级（自动选择，无需修改代码）：
-  1. 腾讯云 OCR（增值税发票识别）  —— 需配置环境变量 TENCENT_SECRET_ID / TENCENT_SECRET_KEY
-     专为中文增值税发票优化，字段识别精度最高，推荐生产环境使用。
+  1. OCR.space（免费 API，中文发票识别质量良好）  —— 需配置环境变量 OCR_SPACE_KEY
+     免费层每月 25,000 次、单文件 ≤1MB，无需信用卡，适合中小规模使用。
   2. 本地 Tesseract（pytesseract） —— 服务器需安装 tesseract 并含中文包（chi_sim），
-     零密钥、可离线，精度适中。
+     零密钥、可离线，作为 OCR.space 不可用时的兜底。
   3. 以上均不可用时不抛异常，返回空结构，由前端转为“人工补录草稿”，系统始终可用。
 
 支持图片（PNG/JPG/BMP/TIFF）与 PDF（使用 pymupdf 渲染首页）。
@@ -97,7 +97,7 @@ def _company_names(texts: List[str]) -> List[str]:
 
 
 def _parse_structured(text: str, texts: List[str]) -> Dict[str, Any]:
-    """通用文本解析（适用于 Tesseract / 腾讯云返回的全文）。"""
+    """通用文本解析（适用于 Tesseract / OCR.space 返回的全文）。"""
     full = text
 
     # 发票号码：20 位或 8-20 位数字，常跟在“发票号码”后
@@ -182,54 +182,64 @@ def _parse_structured(text: str, texts: List[str]) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# 引擎 1：腾讯云 OCR（增值税发票识别）
+# 引擎 1：OCR.space 免费 API（中文发票识别，无需信用卡）
 # ---------------------------------------------------------------------------
-def _ocr_tencent(path: str) -> Optional[Dict[str, Any]]:
-    secret_id = os.environ.get("TENCENT_SECRET_ID")
-    secret_key = os.environ.get("TENCENT_SECRET_KEY")
-    if not (secret_id and secret_key):
+def _ocr_ocrspace(path: str) -> Optional[Dict[str, Any]]:
+    """调用 OCR.space 免费 API 识别中文发票。
+
+    免费层限制：每月 25,000 次、单文件 ≤1MB、使用 OCR Engine 1。
+    需环境变量 OCR_SPACE_KEY；无 key 或调用失败则返回 None，交由 Tesseract 兜底。
+    """
+    api_key = os.environ.get("OCR_SPACE_KEY")
+    if not api_key:
         return None
     try:
-        from tencentcloud.common import credential
-        from tencentcloud.common.profile.client_profile import ClientProfile
-        from tencentcloud.common.profile.http_profile import HttpProfile
-        from tencentcloud.ocr.v20181119 import ocr_client, models
+        import requests
+        import base64
+        import io
+        from PIL import Image
 
         img_path = _to_image_path(path)
-        with open(img_path, "rb") as f:
-            b64 = f.read()
-        # 直接传图片 base64（支持 VatInvoice / 通用票据）
-        cred = credential.Credential(secret_id, secret_key)
-        http = HttpProfile()
-        http.endpoint = "ocr.tencentcloudapi.com"
-        client = ocr_client.OcrClient(cred, "ap-guangzhou", ClientProfile(http))
-        req = models.RecognizeVatInvoiceRequest()
-        import base64
-        req.ImageBase64 = base64.b64encode(b64).decode("utf-8")
-        resp = client.RecognizeVatInvoice(req)
-        v = resp.VatInvoice
-        if not v:
+
+        # 压缩到 ≤900KB（免费层单文件上限 1MB），避免请求被拒
+        with Image.open(img_path) as im:
+            im = im.convert("RGB")
+            quality = 90
+            while True:
+                buf = io.BytesIO()
+                im.save(buf, format="JPEG", quality=quality)
+                size = buf.tell()
+                if size <= 900 * 1024 or quality <= 30:
+                    break
+                quality -= 15
+                if im.size[0] > 800:
+                    im = im.resize((int(im.size[0] * 0.8), int(im.size[1] * 0.8)))
+            b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+
+        resp = requests.post(
+            "https://api.ocr.space/parse/image",
+            data={
+                "apikey": api_key,
+                "base64image": f"data:image/jpeg;base64,{b64}",
+                "language": "chs",
+                "isOverlayRequired": "false",
+                "scale": "true",
+                "OCREngine": "1",
+            },
+            timeout=30,
+        )
+        data = resp.json()
+        if data.get("IsErroredOnProcessing"):
+            logger.warning(f"OCR.space 处理失败: {data.get('ErrorMessage')}")
             return None
-        date_str = ""
-        if getattr(v, "InvoiceDate", None):
-            date_str = _parse_date(str(v.InvoiceDate)) or str(v.InvoiceDate)
-        rate = str(getattr(v, "TaxRate", "") or "")
-        return {
-            "invoice_no": str(getattr(v, "InvoiceNum", "") or ""),
-            "invoice_date": date_str,
-            "seller_name": str(getattr(v, "SellerName", "") or ""),
-            "seller_tax_id": str(getattr(v, "SellerTaxID", "") or ""),
-            "buyer_name": str(getattr(v, "BuyerName", "") or ""),
-            "buyer_tax_id": str(getattr(v, "BuyerTaxID", "") or ""),
-            "amount_excluding_tax": _to_float(getattr(v, "AmountWithoutTax", 0)),
-            "tax_amount": _to_float(getattr(v, "TaxAmount", 0)),
-            "total_amount": _to_float(getattr(v, "TotalAmount", 0)),
-            "tax_rate": (rate + "%") if rate and "%" not in rate else rate,
-            "items": [],
-            "raw_text": "",
-        }
+        results = data.get("ParsedResults") or []
+        if not results:
+            return None
+        raw = results[0].get("ParsedText", "")
+        texts = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+        return _parse_structured(raw, texts)
     except Exception as e:  # noqa
-        logger.warning(f"腾讯云 OCR 调用失败: {e}")
+        logger.warning(f"OCR.space OCR 调用失败: {e}")
         return None
 
 
@@ -241,7 +251,7 @@ def _to_float(v) -> float:
 
 
 # ---------------------------------------------------------------------------
-# 引擎 2：本地 Tesseract
+# 引擎 2：本地 Tesseract（兜底）
 # ---------------------------------------------------------------------------
 def _ocr_tesseract(path: str) -> Optional[Dict[str, Any]]:
     try:
@@ -266,12 +276,12 @@ def _ocr_tesseract(path: str) -> Optional[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 def ocr_invoice(image_path: str) -> Dict[str, Any]:
     """识别发票，返回结构化字典；任何引擎失败都返回空结构（人工补录）。"""
-    # 1) 腾讯云
-    res = _ocr_tencent(image_path)
+    # 1) OCR.space 免费 API
+    res = _ocr_ocrspace(image_path)
     if res and res.get("total_amount"):
-        logger.info("使用腾讯云 OCR 识别成功")
+        logger.info("使用 OCR.space OCR 识别成功")
         return res
-    # 2) 本地 Tesseract
+    # 2) 本地 Tesseract 兜底
     res = _ocr_tesseract(image_path)
     if res and res.get("total_amount"):
         logger.info("使用 Tesseract OCR 识别成功")
