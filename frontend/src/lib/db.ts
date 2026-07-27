@@ -44,6 +44,7 @@ export interface Invoice {
   status: string; // pending | paid （overdue 为查询时派生）
   raw_text: string;
   file_name: string;
+  image_data: string; // base64 原始发票图片
   created_at: string;
 }
 

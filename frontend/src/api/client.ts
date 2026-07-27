@@ -23,7 +23,15 @@ async function guard<T>(fn: () => T | Promise<T>): Promise<{ data: T }> {
   }
 }
 
-// ------- 工具 -------
+/** 将 File 转为 base64（用于 localStorage 存储） */
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error('图片读取失败'));
+    reader.readAsDataURL(file);
+  });
+}
 function getUserId(): number {
   const id = authLib.getCurrentUserId();
   if (!id) fail('请先登录');
@@ -118,6 +126,10 @@ export const invoiceApi = {
       }
       if (params?.status) list = list.filter((i) => i.status === params.status);
       if (params?.supplier_id) list = list.filter((i) => i.supplier_id === params.supplier_id);
+      if (params?.date_from) list = list.filter((i) => i.invoice_date >= params.date_from!);
+      if (params?.date_to) list = list.filter((i) => i.invoice_date <= params.date_to!);
+      if (params?.amount_min !== undefined) list = list.filter((i) => (i.total_amount || 0) >= params.amount_min!);
+      if (params?.amount_max !== undefined) list = list.filter((i) => (i.total_amount || 0) <= params.amount_max!);
 
       list.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
       return list;
@@ -164,6 +176,7 @@ export const invoiceApi = {
         status: data.status || 'pending',
         raw_text: data.raw_text || '',
         file_name: data.file_name || '',
+        image_data: data.image_data || '',
         created_at: new Date().toISOString(),
       };
       db.invoices.push(inv);
@@ -172,11 +185,14 @@ export const invoiceApi = {
       return decorate(inv, suppliers);
     }),
 
-  upload: (file: File) =>
+  upload: (file: File, onProgress?: (current: number, total: number) => void) =>
     guard(async () => {
       const userId = getUserId();
-      const result = await recognizeInvoice(file);
+      const result = await recognizeInvoice(file, onProgress);
       const supplierId = ensureSupplier(userId, result.seller_name, result.seller_tax_id);
+      // 将图片转为 base64 存储（限制 2MB 以避免 localStorage 超限）
+      let imageData = '';
+      try { imageData = await fileToBase64(file); } catch (_) { /* 图片可选 */ }
       const db = readDB();
       const id = nextId(db, 'invoices');
       const inv: Invoice = {
@@ -199,6 +215,7 @@ export const invoiceApi = {
         status: 'pending',
         raw_text: result.raw_text,
         file_name: file.name,
+        image_data: imageData,
         created_at: new Date().toISOString(),
       };
       db.invoices.push(inv);
@@ -222,7 +239,7 @@ export const invoiceApi = {
       const fields = [
         'invoice_no', 'invoice_date', 'amount_excluding_tax', 'tax_amount', 'total_amount',
         'tax_rate', 'business_month', 'remark', 'buyer_name', 'buyer_tax_id',
-        'seller_name', 'seller_tax_id', 'status',
+        'seller_name', 'seller_tax_id', 'status', 'image_data',
       ];
       for (const f of fields) {
         if (data[f] !== undefined) (inv as any)[f] = data[f];
