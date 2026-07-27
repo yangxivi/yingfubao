@@ -46,7 +46,7 @@ export default function SupplierListPage() {
       form.resetFields();
       fetchSuppliers();
     } catch (err: any) {
-      message.error(err.response?.data?.detail || '更���失败');
+      message.error(err.response?.data?.detail || '更新失败');
     }
   };
 
@@ -84,7 +84,7 @@ export default function SupplierListPage() {
     },
     {
       title: '累计金额', dataIndex: 'total_amount', key: 'total', width: 140,
-      render: (v: number) => <b>��{v.toLocaleString()}</b>,
+      render: (v: number) => <b>¥{v.toLocaleString()}</b>,
     },
     {
       title: '操作', key: 'action', width: 160,

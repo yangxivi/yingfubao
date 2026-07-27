@@ -71,12 +71,12 @@ export default function RemindersPage() {
         </Col>
         <Col xs={24} sm={12} md={6}>
           <Card>
-            <Statistic title="60��内到期" value={data.due_within_60} prefix={<WarningOutlined />} valueStyle={{ color: '#faad14' }} />
+            <Statistic title="60天内到期" value={data.due_within_60} prefix={<WarningOutlined />} valueStyle={{ color: '#faad14' }} />
           </Card>
         </Col>
         <Col xs={24} sm={12} md={6}>
           <Card>
-            <Statistic title="90��内到期" value={data.due_within_90} prefix={<CalendarOutlined />} valueStyle={{ color: '#1677ff' }} />
+            <Statistic title="90天内到期" value={data.due_within_90} prefix={<CalendarOutlined />} valueStyle={{ color: '#1677ff' }} />
           </Card>
         </Col>
       </Row>
@@ -84,7 +84,7 @@ export default function RemindersPage() {
       {data.overdue > 0 && (
         <Card style={{ marginBottom: 16, borderColor: '#ff4d4f' }}>
           <Statistic
-            title="已���期"
+            title="已逾期"
             value={data.overdue}
             prefix={<ExclamationCircleOutlined />}
             valueStyle={{ color: '#ff4d4f' }}
