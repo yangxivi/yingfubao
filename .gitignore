@@ -19,6 +19,7 @@ node_modules/
 frontend/dist/
 npm-debug.log*
 yarn-error.log*
+*.tsbuildinfo
 
 # ----- OS -----
 .DS_Store
