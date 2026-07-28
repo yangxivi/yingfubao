@@ -23,28 +23,22 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 export default function App() {
   const [ready, setReady] = useState(false);
 
-  // 刷新/重进时：探测云端状态 → 预热数据
+  // 刷新/重进时：探测云端状态 → 预热数据 → 再渲染页面
   useEffect(() => {
     const init = async () => {
       // 1. 探测 Supabase 状态并锁定鉴权模式
       const status = await detectAndLockAuthMode();
       setCloudStatus(status);
-      setReady(true); // 触发一次重渲染
 
       // 2. 恢复账期设置
       initAccountPeriodFromSession();
 
-      // 3. 已登录则预热数据缓存
+      // 3. 已登录则预热数据缓存（必须在渲染页面前完成，否则仪表盘首次全 0）
       const token = localStorage.getItem('token');
       const userId = getCurrentUserId();
       if (token && userId) {
-        // 云端就绪时，先把本地账号同步到云端 users 表，否则发票外键会失败
         if (status === 'ready') {
-          try {
-            await syncCurrentUserToCloud();
-          } catch (e) {
-            console.warn('同步账号到云端失败', e);
-          }
+          try { await syncCurrentUserToCloud(); } catch (e) { console.warn('同步账号到云端失败', e); }
         }
         try {
           await initUserDB(userId);
@@ -52,6 +46,9 @@ export default function App() {
           console.warn('初始化数据失败', e);
         }
       }
+
+      // 4. 数据就绪后才允许渲染（解决仪表盘首次加载竞态问题）
+      setReady(true);
     };
     init();
   }, []);
