@@ -126,7 +126,7 @@ export default function DashboardPage() {
         <div className="yb-stat-card">
           <div className="stat-main">
             <div className="stat-label">总金额</div>
-            <div className="stat-value">¥{data.total_payable.toLocaleString()}</div>
+            <div className="stat-value">{data.total_payable.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
             <div className="stat-sub">所有待付金额总和</div>
           </div>
           <div className="stat-icon" style={{ background: '#fff7e6', color: '#fa8c16' }}>
@@ -226,7 +226,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="yb-invoice-right">
                     <div className="yb-invoice-amount" style={{ color: '#1677ff' }}>
-                      ¥{inv.total_amount?.toLocaleString()}
+                      {inv.total_amount?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </div>
                     <div className="yb-invoice-status">{getStatusTag(inv.payment_date)}</div>
                   </div>
@@ -275,7 +275,7 @@ export default function DashboardPage() {
                     </div>
                     <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 8 }}>
                       <div style={{ color: '#1677ff', fontWeight: 600, fontSize: 14 }}>
-                        ¥{inv.total_amount?.toLocaleString()}
+                        {inv.total_amount?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </div>
                       <Tag
                         color={inv.status === 'paid' ? 'green' : inv.status === 'overdue' ? 'red' : 'orange'}

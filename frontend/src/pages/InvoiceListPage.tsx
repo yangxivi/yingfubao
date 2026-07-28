@@ -264,7 +264,7 @@ export default function InvoiceListPage() {
       key: 'amount',
       width: 120,
       sorter: (a, b) => (a.total_amount || 0) - (b.total_amount || 0),
-      render: (v: number) => <b style={{ color: '#1677ff' }}>¥{v.toLocaleString()}</b>,
+      render: (v: number) => <b style={{ color: '#1677ff' }}>{v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b>,
     },
     {
       title: '状态',
@@ -526,7 +526,7 @@ export default function InvoiceListPage() {
           </div>
           <div className="yb-summary-item summary-primary">
             <div className="summary-label">金额合计</div>
-            <div className="summary-value">¥{globalSummary.totalAmount.toLocaleString()}</div>
+            <div className="summary-value">{globalSummary.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
           </div>
           <div className="yb-summary-item summary-success">
             <div className="summary-label">待付款</div>
@@ -571,9 +571,9 @@ export default function InvoiceListPage() {
               <Descriptions.Item label="供应商税号">{selectedInvoice.supplier_tax_id}</Descriptions.Item>
               <Descriptions.Item label="开票日期">{selectedInvoice.invoice_date}</Descriptions.Item>
               <Descriptions.Item label="付款日期">{selectedInvoice.payment_date}</Descriptions.Item>
-              <Descriptions.Item label="不含税金额">¥{(selectedInvoice.amount_excluding_tax || 0).toLocaleString()}</Descriptions.Item>
-              <Descriptions.Item label="税额">¥{(selectedInvoice.tax_amount || 0).toLocaleString()}</Descriptions.Item>
-              <Descriptions.Item label="价税合计"><b style={{ color: '#cf1322' }}>¥{(selectedInvoice.total_amount || 0).toLocaleString()}</b></Descriptions.Item>
+              <Descriptions.Item label="不含税金额">{(selectedInvoice.amount_excluding_tax || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Descriptions.Item>
+              <Descriptions.Item label="税额">{(selectedInvoice.tax_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Descriptions.Item>
+              <Descriptions.Item label="价税合计"><b style={{ color: '#cf1322' }}>{(selectedInvoice.total_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b></Descriptions.Item>
               <Descriptions.Item label="税率">{selectedInvoice.tax_rate}</Descriptions.Item>
               <Descriptions.Item label="状态"><Tag color={selectedInvoice.status === 'paid' ? 'green' : selectedInvoice.status === 'overdue' ? 'red' : 'orange'}>{selectedInvoice.status === 'paid' ? '已付款' : selectedInvoice.status === 'overdue' ? '已逾期' : '待付款'}</Tag></Descriptions.Item>
               {selectedInvoice.remark && <Descriptions.Item label="备注">{selectedInvoice.remark}</Descriptions.Item>}
