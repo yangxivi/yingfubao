@@ -131,7 +131,13 @@ async function cloudRegister(data: {
     })
     .select()
     .single();
-  if (error) throw new Error(error.message || '注册失败');
+  if (error) {
+    const msg = (error.message || '').toLowerCase();
+    if (msg.includes('row-level security') || msg.includes('rls')) {
+      throw new Error('数据库安全策略未配置，请在 Supabase SQL Editor 执行：ALTER TABLE public.users DISABLE ROW LEVEL SECURITY');
+    }
+    throw new Error(error.message || '注册失败');
+  }
 
   const user = rowToUser(row);
   setSession(user);
@@ -149,7 +155,14 @@ async function cloudLogin(data: {
     .select('*')
     .eq('username', data.username)
     .maybeSingle();
-  if (error || !row) throw new Error('用户名或密码错误');
+  if (error) {
+    const msg = (error.message || '').toLowerCase();
+    if (msg.includes('row-level security') || msg.includes('rls')) {
+      throw new Error('数据库安全策略未配置，请在 Supabase SQL Editor 执行：ALTER TABLE public.users DISABLE ROW LEVEL SECURITY');
+    }
+    throw new Error('用户名或密码错误');
+  }
+  if (!row) throw new Error('用户名或密码错误');
 
   const ok = await verifyPassword(data.password, row.password_hash);
   if (!ok) throw new Error('用户名或密码错误');
