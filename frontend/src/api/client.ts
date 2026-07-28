@@ -7,6 +7,7 @@ import { readDB, writeDB, nextId } from '../lib/db';
 import type { Invoice, Supplier } from '../lib/db';
 import * as authLib from '../lib/auth';
 import { recognizeInvoice } from '../lib/ocr';
+import dayjs from 'dayjs';
 
 // ------- 错误处理：兼容 axios 风格 -------
 function fail(msg: string): never {
@@ -536,8 +537,104 @@ export const dashboardApi = {
           tax_id: s.tax_id,
           contact_person: s.contact_person,
           created_at: s.created_at,
-        }));
+          }));
     }),
-};
+
+    analytics: () =>
+      guard<any>(() => {
+        const userId = getUserId();
+        const db = readDB();
+        const suppliers = db.suppliers.filter((s) => s.userId === userId);
+        const list = db.invoices
+          .filter((i) => i.userId === userId)
+          .map((i) => decorate(i, suppliers));
+
+        // 1) 月度趋势（按开票日期，近 6 个月）
+        const monthlyMap = new Map<string, { count: number; amount: number }>();
+        const now = dayjs();
+        for (let i = 5; i >= 0; i--) {
+          const m = now.subtract(i, 'month');
+          monthlyMap.set(m.format('YYYY-MM'), { count: 0, amount: 0 });
+        }
+        list.forEach((inv: any) => {
+          const key = (inv.invoice_date || inv.created_at || '').slice(0, 7);
+          const cur = monthlyMap.get(key);
+          if (cur) {
+            cur.count += 1;
+            cur.amount += Number(inv.total_amount) || 0;
+          }
+        });
+        const monthlyTrend = Array.from(monthlyMap.entries()).map(([month, v]) => ({
+          month,
+          count: v.count,
+          amount: Math.round(v.amount * 100) / 100,
+        }));
+
+        // 2) 付款状态分布
+        const statusMeta: Record<string, string> = { paid: '已付款', pending: '待付款', overdue: '已逾期' };
+        const statusDistribution = ['paid', 'pending', 'overdue'].map((st) => {
+          const items = list.filter((i: any) => i.status === st);
+          return {
+            status: st,
+            label: statusMeta[st],
+            count: items.length,
+            amount: Math.round(items.reduce((s: number, i: any) => s + (Number(i.total_amount) || 0), 0) * 100) / 100,
+          };
+        });
+
+        // 3) 供应商 TOP5（按累计金额）
+        const supMap = new Map<number, { name: string; amount: number; count: number }>();
+        list.forEach((inv: any) => {
+          const sid = inv.supplier_id;
+          if (!sid) return;
+          if (!supMap.has(sid)) {
+            const sup = suppliers.find((s) => s.id === sid);
+            supMap.set(sid, {
+              name: (sup?.name || inv.supplier_name || '未知').replace(/^(名称[：:\s]*)/, ''),
+              amount: 0,
+              count: 0,
+            });
+          }
+          const cur = supMap.get(sid)!;
+          cur.amount += Number(inv.total_amount) || 0;
+          cur.count += 1;
+        });
+        const topSuppliers = Array.from(supMap.values())
+          .sort((a, b) => b.amount - a.amount)
+          .slice(0, 5)
+          .map((s) => ({ ...s, amount: Math.round(s.amount * 100) / 100 }));
+
+        // 4) 账龄分布（逾期天数分段）
+        const agingBuckets = [
+          { bucket: '0-30天', min: 0, max: 30 },
+          { bucket: '31-60天', min: 31, max: 60 },
+          { bucket: '61-90天', min: 61, max: 90 },
+          { bucket: '90天以上', min: 91, max: Infinity },
+        ];
+        const aging = agingBuckets.map((b) => {
+          const items = list.filter((i: any) => {
+            if (i.status !== 'overdue' || !i.payment_date) return false;
+            const days = Math.round(
+              (today().getTime() - new Date(i.payment_date + 'T00:00:00').getTime()) / 86400000,
+            );
+            return days >= b.min && days <= b.max;
+          });
+          return {
+            bucket: b.bucket,
+            count: items.length,
+            amount: Math.round(items.reduce((s: number, i: any) => s + (Number(i.total_amount) || 0), 0) * 100) / 100,
+          };
+        });
+
+        // 5) 付款进度（已付金额占比）
+        const totalAmount = Math.round(list.reduce((s: number, i: any) => s + (Number(i.total_amount) || 0), 0) * 100) / 100;
+        const paidAmount = Math.round(
+          list.filter((i: any) => i.status === 'paid').reduce((s: number, i: any) => s + (Number(i.total_amount) || 0), 0) * 100,
+        ) / 100;
+        const paidRatio = totalAmount > 0 ? Math.round((paidAmount / totalAmount) * 1000) / 10 : 0;
+
+        return { monthlyTrend, statusDistribution, topSuppliers, aging, paidRatio, paidAmount, totalAmount };
+      }),
+  };
 
 export default {};

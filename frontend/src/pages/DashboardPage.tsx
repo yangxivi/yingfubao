@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Card, Statistic, Tag, Spin, Alert, Image, Empty, Button,
-  Row, Col,
+  Row, Col, Progress, Tooltip,
 } from 'antd';
 import {
   FileTextOutlined,
@@ -17,9 +17,36 @@ import {
   UnorderedListOutlined,
   ShopOutlined,
   RightOutlined,
+  PieChartOutlined,
 } from '@ant-design/icons';
 import { dashboardApi } from '../api/client';
 import dayjs from 'dayjs';
+
+// 驾驶舱图表配色
+const STATUS_COLOR: Record<string, string> = {
+  paid: '#52c41a',
+  pending: '#faad14',
+  overdue: '#ff4d4f',
+};
+const SUPPLIER_COLORS = ['#1677ff', '#13c2c2', '#722ed1', '#fa8c16', '#eb2f96'];
+const CHART_BLUE = '#1677ff';
+
+// 生成月度趋势的面积/折线 path（viewBox 坐标系）
+function buildTrendPaths(data: { amount: number }[]) {
+  const w = 640;
+  const h = 240;
+  const padX = 36;
+  const padY = 24;
+  const max = Math.max(1, ...data.map((d) => d.amount));
+  const stepX = data.length > 1 ? (w - padX * 2) / (data.length - 1) : 0;
+  const pts = data.map((d, i) => ({
+    x: padX + stepX * i,
+    y: h - padY - (d.amount / max) * (h - padY * 2),
+  }));
+  const line = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
+  const area = `${line} L${pts[pts.length - 1].x},${h - padY} L${pts[0].x},${h - padY} Z`;
+  return { line, area, pts, w, h, padX, padY };
+}
 
 type TabKey = 'overdue' | '15' | '30' | '60' | '90';
 
@@ -28,6 +55,7 @@ export default function DashboardPage() {
   const [reminders, setReminders] = useState<any>(null);
   const [recentInvoices, setRecentInvoices] = useState<any[]>([]);
   const [recentSuppliers, setRecentSuppliers] = useState<any[]>([]);
+  const [analytics, setAnalytics] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabKey>('overdue');
@@ -38,11 +66,13 @@ export default function DashboardPage() {
       dashboardApi.reminders(),
       dashboardApi.recentInvoices(),
       dashboardApi.recentSuppliers(),
-    ]).then(([summaryRes, remindersRes, invoicesRes, suppliersRes]) => {
+      dashboardApi.analytics(),
+    ]).then(([summaryRes, remindersRes, invoicesRes, suppliersRes, analyticsRes]) => {
       setData(summaryRes.data);
       setReminders(remindersRes.data);
       setRecentInvoices(invoicesRes.data);
       setRecentSuppliers(suppliersRes.data);
+      setAnalytics(analyticsRes.data);
     }).finally(() => setLoading(false));
   }, []);
 
@@ -175,6 +205,67 @@ export default function DashboardPage() {
           <div className="stat-icon"><WarningOutlined /></div>
         </div>
       </div>
+
+      {/* 数据驾驶舱：可视化图表 */}
+      {analytics && (
+        <div style={{ marginTop: 20 }}>
+          <div className="yb-card-title" style={{ marginBottom: 12 }}>
+            <PieChartOutlined style={{ color: CHART_BLUE, marginRight: 8 }} />
+            数据驾驶舱
+            <span style={{ fontSize: 12, color: '#999', fontWeight: 400, marginLeft: 8 }}>可视化数据概览</span>
+          </div>
+
+          <Row gutter={[16, 16]}>
+            {/* 月度趋势 */}
+            <Col xs={24} lg={16}>
+              <Card title="近 6 个月发票趋势">
+                <TrendChart data={analytics.monthlyTrend} />
+              </Card>
+            </Col>
+
+            {/* 付款状态分布 */}
+            <Col xs={24} lg={8}>
+              <Card title="付款状态分布">
+                <StatusDonut data={analytics.statusDistribution} />
+              </Card>
+            </Col>
+
+            {/* 供应商 TOP5 */}
+            <Col xs={24} md={12} lg={8}>
+              <Card title="供应商 TOP5（按金额）">
+                <SupplierBars data={analytics.topSuppliers} />
+              </Card>
+            </Col>
+
+            {/* 账龄分布 */}
+            <Col xs={24} md={12} lg={8}>
+              <Card title="账龄分布（逾期）">
+                <AgingBars data={analytics.aging} />
+              </Card>
+            </Col>
+
+            {/* 付款进度 */}
+            <Col xs={24} lg={8}>
+              <Card title="付款进度">
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '6px 0' }}>
+                  <Progress
+                    type="dashboard"
+                    percent={analytics.paidRatio}
+                    strokeColor="#52c41a"
+                    size={180}
+                    format={(p) => `${p}%`}
+                  />
+                  <div style={{ fontSize: 13, color: '#999', marginTop: 8, textAlign: 'center' }}>
+                    已付 ¥{analytics.paidAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    <br />
+                    总额 ¥{analytics.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                </div>
+              </Card>
+            </Col>
+          </Row>
+        </div>
+      )}
 
       {/* 到期发票提醒 */}
       <Card style={{ marginTop: 20 }}>
@@ -345,6 +436,138 @@ export default function DashboardPage() {
           </Card>
         </Col>
       </Row>
+    </div>
+  );
+}
+
+/* ----------------- 驾驶舱图表子组件（零依赖，antd + 内联 SVG） ----------------- */
+
+function TrendChart({ data }: { data: any[] }) {
+  const { line, area, pts, w, h, padX, padY } = buildTrendPaths(data);
+  const gridLines = [0, 0.25, 0.5, 0.75, 1];
+  return (
+    <div>
+      <svg viewBox={`0 0 ${w} ${h}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
+        <defs>
+          <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={CHART_BLUE} stopOpacity={0.25} />
+            <stop offset="100%" stopColor={CHART_BLUE} stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        {gridLines.map((g, i) => {
+          const y = padY + g * (h - padY * 2);
+          return <line key={i} x1={padX} y1={y} x2={w - padX} y2={y} stroke="#f0f0f0" strokeWidth={1} />;
+        })}
+        <path d={area} fill="url(#trendFill)" />
+        <path d={line} fill="none" stroke={CHART_BLUE} strokeWidth={2} />
+        {pts.map((p, i) => (
+          <circle key={i} cx={p.x} cy={p.y} r={4} fill="#fff" stroke={CHART_BLUE} strokeWidth={2} />
+        ))}
+        {data.map((d, i) => (
+          <text key={i} x={pts[i].x} y={h - 6} fontSize={11} fill="#999" textAnchor="middle">
+            {d.month.slice(2)}
+          </text>
+        ))}
+      </svg>
+      <div style={{ display: 'flex', justifyContent: 'space-around', marginTop: 8 }}>
+        {data.map((d, i) => (
+          <Tooltip key={i} title={`${d.month}：¥${d.amount.toLocaleString()} · ${d.count} 张`}>
+            <span style={{ fontSize: 12, color: '#666', cursor: 'default' }}>{d.count} 张</span>
+          </Tooltip>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function StatusDonut({ data }: { data: any[] }) {
+  const total = data.reduce((s, d) => s + d.count, 0);
+  const r = 70;
+  const c = 2 * Math.PI * r;
+  let offset = 0;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <svg viewBox="0 0 180 180" style={{ width: 180, height: 180 }}>
+        <g transform="rotate(-90 90 90)">
+          <circle cx={90} cy={90} r={r} fill="none" stroke="#f0f0f0" strokeWidth={20} />
+          {data.map((d) => {
+            const len = total > 0 ? (d.count / total) * c : 0;
+            const seg = (
+              <circle
+                key={d.status}
+                cx={90} cy={90} r={r}
+                fill="none"
+                stroke={STATUS_COLOR[d.status]}
+                strokeWidth={20}
+                strokeDasharray={`${len} ${c - len}`}
+                strokeDashoffset={-offset}
+              />
+            );
+            offset += len;
+            return seg;
+          })}
+        </g>
+        <text x={90} y={86} fontSize={24} fontWeight={700} fill="#333" textAnchor="middle">{total}</text>
+        <text x={90} y={106} fontSize={12} fill="#999" textAnchor="middle">总发票</text>
+      </svg>
+      <div style={{ display: 'flex', gap: 14, marginTop: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
+        {data.map((d) => (
+          <div key={d.status} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 2, background: STATUS_COLOR[d.status], display: 'inline-block' }} />
+            <span style={{ fontSize: 12, color: '#666' }}>{d.label} {d.count}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SupplierBars({ data }: { data: any[] }) {
+  if (data.length === 0) return <Empty description="暂无供应商数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
+  const max = Math.max(1, ...data.map((d) => d.amount));
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: '4px 0' }}>
+      {data.map((d, i) => (
+        <Tooltip key={i} title={`${d.name}：¥${d.amount.toLocaleString()} · ${d.count} 张`}>
+          <div style={{ cursor: 'default' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
+              <span style={{ color: '#333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 110 }}>{d.name}</span>
+              <span style={{ color: '#666', flexShrink: 0, marginLeft: 8 }}>¥{d.amount.toLocaleString()}</span>
+            </div>
+            <div style={{ background: '#f5f5f5', borderRadius: 6, height: 8, overflow: 'hidden' }}>
+              <div style={{ width: `${(d.amount / max) * 100}%`, height: '100%', background: SUPPLIER_COLORS[i % SUPPLIER_COLORS.length], borderRadius: 6 }} />
+            </div>
+          </div>
+        </Tooltip>
+      ))}
+    </div>
+  );
+}
+
+function AgingBars({ data }: { data: any[] }) {
+  const max = Math.max(1, ...data.map((d) => d.count));
+  const w = 320;
+  const h = 170;
+  const bw = 44;
+  const gap = (w - bw * data.length) / (data.length + 1);
+  return (
+    <div>
+      <svg viewBox={`0 0 ${w} ${h}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
+        {data.map((d, i) => {
+          const x = gap + i * (bw + gap);
+          const bh = (d.count / max) * (h - 46);
+          const y = h - 24 - bh;
+          return (
+            <g key={d.bucket}>
+              <rect x={x} y={y} width={bw} height={Math.max(bh, 2)} rx={4} fill="#ff7875">
+                <title>{`${d.bucket}：${d.count} 张 · ¥${d.amount.toLocaleString()}`}</title>
+              </rect>
+              <text x={x + bw / 2} y={y - 6} fontSize={12} fill="#ff4d4f" textAnchor="middle">{d.count || ''}</text>
+              <text x={x + bw / 2} y={h - 6} fontSize={11} fill="#999" textAnchor="middle">{d.bucket}</text>
+            </g>
+          );
+        })}
+      </svg>
     </div>
   );
 }
