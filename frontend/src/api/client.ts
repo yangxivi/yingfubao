@@ -575,10 +575,10 @@ export const dashboardApi = {
           .filter((i) => i.userId === userId)
           .map((i) => decorate(i, suppliers));
 
-        // 1) 月度趋势（按开票日期，近 6 个月）
+        // 1) 月度趋势（按开票日期，近 12 个月）
         const monthlyMap = new Map<string, { count: number; amount: number }>();
         const now = dayjs();
-        for (let i = 5; i >= 0; i--) {
+        for (let i = 11; i >= 0; i--) {
           const m = now.subtract(i, 'month');
           monthlyMap.set(m.format('YYYY-MM'), { count: 0, amount: 0 });
         }
@@ -659,7 +659,43 @@ export const dashboardApi = {
         ) / 100;
         const paidRatio = totalAmount > 0 ? Math.round((paidAmount / totalAmount) * 1000) / 10 : 0;
 
-        return { monthlyTrend, statusDistribution, topSuppliers, aging, paidRatio, paidAmount, totalAmount };
+        // 6) 本月付款完成率（本月应付款中已付占比）
+        const curMonth = now.format('YYYY-MM');
+        const monthInvoices = list.filter((i: any) => (i.payment_date || '').slice(0, 7) === curMonth);
+        const monthDueTotal = Math.round(monthInvoices.reduce((s: number, i: any) => s + (Number(i.total_amount) || 0), 0) * 100) / 100;
+        const monthPaidTotal = Math.round(
+          monthInvoices.filter((i: any) => i.status === 'paid').reduce((s: number, i: any) => s + (Number(i.total_amount) || 0), 0) * 100,
+        ) / 100;
+        const monthPaidRatio = monthDueTotal > 0 ? Math.round((monthPaidTotal / monthDueTotal) * 1000) / 10 : 0;
+
+        // 7) 待付款到期票追度（按剩余天数分桶的未付金额分布）
+        const dueBuckets = [
+          { label: '逾期', min: -Infinity, max: -1 },
+          { label: '0-15天', min: 0, max: 15 },
+          { label: '15-30天', min: 16, max: 30 },
+          { label: '30-60天', min: 31, max: 60 },
+          { label: '60-90天', min: 61, max: 90 },
+          { label: '90天+', min: 91, max: Infinity },
+        ];
+        const paymentDueDist = dueBuckets.map((b) => {
+          const items = list.filter((i: any) => {
+            if (i.status === 'paid' || !i.payment_date) return false;
+            const daysLeft = dayjs(i.payment_date).diff(now, 'day');
+            return daysLeft >= b.min && daysLeft <= b.max;
+          });
+          return {
+            label: b.label,
+            amount: Math.round(items.reduce((s: number, i: any) => s + (Number(i.total_amount) || 0), 0) * 100) / 100,
+            count: items.length,
+          };
+        });
+
+        return {
+          monthlyTrend, statusDistribution, topSuppliers, aging,
+          paidRatio, paidAmount, totalAmount,
+          monthPaidRatio, monthPaidTotal, monthDueTotal,
+          paymentDueDist,
+        };
       }),
   };
 

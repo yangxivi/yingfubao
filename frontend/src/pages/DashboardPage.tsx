@@ -30,6 +30,7 @@ const STATUS_COLOR: Record<string, string> = {
 };
 const SUPPLIER_COLORS = ['#1677ff', '#13c2c2', '#722ed1', '#fa8c16', '#eb2f96'];
 const CHART_BLUE = '#1677ff';
+const CHART_RED = '#ff4d4f';
 
 // 生成月度趋势的面积/折线 path（viewBox 坐标系）
 function buildTrendPaths(data: { amount: number }[]) {
@@ -240,51 +241,49 @@ export default function DashboardPage() {
           </div>
 
           <Row gutter={[16, 16]} className="cockpit-row">
-            {/* 月度趋势 */}
-            <Col xs={24} lg={16}>
-              <Card title="近 6 个月发票趋势" className="cockpit-card">
+            {/* 第一行：趋势 + 状态 */}
+            <Col xs={24} lg={14}>
+              <Card title="近 12 个月开票趋势" className="cockpit-card">
                 <TrendChart data={analytics.monthlyTrend} />
               </Card>
             </Col>
 
-            {/* 付款状态分布 */}
-            <Col xs={24} lg={8}>
+            <Col xs={24} lg={10}>
               <Card title="付款状态分布" className="cockpit-card">
                 <StatusDonut data={analytics.statusDistribution} />
               </Card>
             </Col>
 
-            {/* 供应商 TOP5 */}
-            <Col xs={24} md={12} lg={8}>
-              <Card title="供应商 TOP5（按金额）" className="cockpit-card">
-                <SupplierBars data={analytics.topSuppliers} />
-              </Card>
-            </Col>
-
-            {/* 账龄分布 */}
-            <Col xs={24} md={12} lg={8}>
-              <Card title="账龄分布（逾期）" className="cockpit-card">
+            {/* 第二行：账龄 + 供应商 */}
+            <Col xs={24} md={12} lg={10}>
+              <Card title="未来 6 个月应付预测" className="cockpit-card">
                 <AgingBars data={analytics.aging} />
               </Card>
             </Col>
 
-            {/* 付款进度 */}
-            <Col xs={24} lg={8}>
-              <Card title="付款进度" className="cockpit-card">
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '6px 0' }}>
-                  <Progress
-                    type="dashboard"
-                    percent={analytics.paidRatio}
-                    strokeColor="#52c41a"
-                    size={180}
-                    format={(p) => `${p}%`}
-                  />
-                  <div style={{ fontSize: 13, color: '#999', marginTop: 8, textAlign: 'center' }}>
-                    已付 ¥{analytics.paidAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    <br />
-                    总额 ¥{analytics.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </div>
-                </div>
+            <Col xs={24} md={12} lg={14}>
+              <Card title="Top5 供应商应付款" className="cockpit-card">
+                <SupplierBars data={analytics.topSuppliers} />
+              </Card>
+            </Col>
+
+            {/* 第三行：到期分布 + 月度完成率 */}
+            <Col xs={24} lg={14}>
+              <Card title="待付款到期票追度" className="cockpit-card">
+                <PaymentDueDist data={analytics.paymentDueDist} />
+              </Card>
+            </Col>
+
+            <Col xs={24} lg={10}>
+              <Card title="本月付款完成率" className="cockpit-card">
+                <MonthlyRate data={{
+                  ratio: analytics.monthPaidRatio,
+                  paid: analytics.monthPaidTotal,
+                  due: analytics.monthDueTotal,
+                  overallRatio: analytics.paidRatio,
+                  overallPaid: analytics.paidAmount,
+                  overallTotal: analytics.totalAmount,
+                }} />
               </Card>
             </Col>
           </Row>
@@ -592,6 +591,90 @@ function AgingBars({ data }: { data: any[] }) {
           );
         })}
       </svg>
+    </div>
+  );
+}
+
+// ===== 待付款到期票追度（按剩余天数分桶的面积图） =====
+function PaymentDueDist({ data }: { data: any[] }) {
+  const W = 560, H = 220;
+  const padX = 50, padY = 30, padB = 40;
+  const maxVal = Math.max(...data.map((d) => d.amount), 1);
+  const cw = (W - padX * 2) / Math.max(data.length, 1);
+
+  const pts = data.map((d, i) => ({
+    x: padX + cw * i + cw / 2,
+    y: padY + (H - padY - padB) * (1 - d.amount / maxVal),
+    d,
+  }));
+
+  const line = pts.map((p, i) => (i === 0 ? `M${p.x},${p.y}` : `L${p.x},${p.y}`)).join(' ');
+  const area = `${line} L${pts[pts.length - 1].x},${H - padB} L${pts[0].x},${H - padB} Z`;
+
+  return (
+    <div>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
+        <defs>
+          <linearGradient id="dueFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={CHART_RED} stopOpacity={0.3} />
+            <stop offset="100%" stopColor={CHART_RED} stopOpacity={0.02} />
+          </linearGradient>
+        </defs>
+        {/* Y轴网格 */}
+        {[0, 0.25, 0.5, 0.75, 1].map((g, i) => {
+          const y = padY + g * (H - padY - padB);
+          return <line key={i} x1={padX} y1={y} x2={W - 20} y2={y} stroke="#f0f0f0" strokeWidth={1} />;
+        })}
+        {/* Y轴标签 */}
+        {[0, 0.25, 0.5, 0.75, 1].map((g, i) => {
+          const v = Math.round(maxVal * g);
+          const y = padY + g * (H - padY - padB);
+          return <text key={i} x={padX - 8} y={y + 4} fontSize={11} fill="#999" textAnchor="end">{v >= 10000 ? `${(v/10000).toFixed(0)}万` : v}</text>;
+        })}
+        <path d={area} fill="url(#dueFill)" />
+        <path d={line} fill="none" stroke={CHART_RED} strokeWidth={2.5} />
+        {pts.map((p, i) => (
+          <circle key={i} cx={p.x} cy={p.y} r={4.5} fill="#fff" stroke={CHART_RED} strokeWidth={2}>
+            <title>{p.d.label}：¥{p.d.amount.toLocaleString()} ({p.d.count} 张)</title>
+          </circle>
+        ))}
+        {data.map((d, i) => (
+          <text key={i} x={pts[i].x} y={H - 10} fontSize={11} fill="#666" textAnchor="middle">{d.label}</text>
+        ))}
+      </svg>
+      <div style={{ display: 'flex', justifyContent: 'space-around', marginTop: 6, flexWrap: 'wrap', gap: 4 }}>
+        {data.map((d, i) => (
+          <Tooltip key={i} title={`${d.label}：¥${d.amount.toLocaleString()} · ${d.count} 张`}>
+            <span style={{ fontSize: 12, color: '#666', cursor: 'default' }}>¥{d.amount.toLocaleString()}</span>
+          </Tooltip>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ===== 本月付款完成率 =====
+function MonthlyRate({ data }: { data: { ratio: number; paid: number; due: number; overallRatio: number; overallPaid: number; overallTotal: number } }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '12px 0' }}>
+      <Progress
+        type="dashboard"
+        percent={data.ratio}
+        strokeColor={data.ratio >= 80 ? '#52c41a' : data.ratio >= 50 ? '#faad14' : '#ff4d4f'}
+        size={150}
+        format={(p) => `${p}%`}
+      />
+      <div style={{ fontSize: 13, color: '#999', marginTop: 10, textAlign: 'center', lineHeight: 1.8 }}>
+        <div>已付 <span style={{ color: '#52c41a', fontWeight: 600 }}>¥{data.paid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+        <div>本月应付 <span style={{ fontWeight: 600 }}>¥{data.due.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+      </div>
+      <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #f0f0f0', width: '80%', textAlign: 'center' }}>
+        <div style={{ fontSize: 12, color: '#bbb' }}>累计完成率</div>
+        <div style={{ fontSize: 16, fontWeight: 600, color: '#1677ff', marginTop: 2 }}>{data.overallRatio}%</div>
+        <div style={{ fontSize: 11, color: '#999', marginTop: 2 }}>
+          ¥{data.overallPaid.toLocaleString(undefined, { maximumFractionDigits: 0 })} / ¥{data.overallTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+        </div>
+      </div>
     </div>
   );
 }
