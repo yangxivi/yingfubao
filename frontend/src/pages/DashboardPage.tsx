@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Card, Statistic, Tag, Spin, Alert, Image, Empty, Button,
@@ -467,9 +467,31 @@ export default function DashboardPage() {
 
 function TrendChart({ data }: { data: any[] }) {
   const { line, area, pts, w, h, padX, padY } = buildTrendPaths(data);
+  const [hover, setHover] = useState<number | null>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  const handleMove = (e: React.MouseEvent) => {
+    const rect = wrapRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const svgX = ((e.clientX - rect.left) / rect.width) * w;
+    let idx = 0;
+    let min = Infinity;
+    pts.forEach((p, i) => {
+      const d = Math.abs(p.x - svgX);
+      if (d < min) { min = d; idx = i; }
+    });
+    setHover(idx);
+  };
+
   const gridLines = [0, 0.25, 0.5, 0.75, 1];
+  const hp = hover !== null ? pts[hover] : null;
   return (
-    <div>
+    <div
+      ref={wrapRef}
+      style={{ position: 'relative' }}
+      onMouseMove={handleMove}
+      onMouseLeave={() => setHover(null)}
+    >
       <svg viewBox={`0 0 ${w} ${h}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
         <defs>
           <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
@@ -483,20 +505,65 @@ function TrendChart({ data }: { data: any[] }) {
         })}
         <path d={area} fill="url(#trendFill)" />
         <path d={line} fill="none" stroke={CHART_BLUE} strokeWidth={2} />
+        {/* 悬停竖直参考线 */}
+        {hp && (
+          <line x1={hp.x} y1={padY} x2={hp.x} y2={h - padY} stroke={CHART_BLUE} strokeWidth={1} strokeDasharray="4 4" opacity={0.5} />
+        )}
         {pts.map((p, i) => (
-          <circle key={i} cx={p.x} cy={p.y} r={4} fill="#fff" stroke={CHART_BLUE} strokeWidth={2} />
+          <circle
+            key={i}
+            cx={p.x}
+            cy={p.y}
+            r={hover === i ? 6 : 4}
+            fill={hover === i ? CHART_BLUE : '#fff'}
+            stroke={CHART_BLUE}
+            strokeWidth={2}
+            style={{ transition: 'r 0.1s' }}
+          />
         ))}
         {data.map((d, i) => (
-          <text key={i} x={pts[i].x} y={h - 6} fontSize={11} fill="#999" textAnchor="middle">
+          <text
+            key={i}
+            x={pts[i].x}
+            y={h - 6}
+            fontSize={11}
+            fill={hover === i ? CHART_BLUE : '#999'}
+            fontWeight={hover === i ? 700 : 400}
+            textAnchor="middle"
+          >
             {d.month.slice(2)}
           </text>
         ))}
       </svg>
+      {/* 浮动数据提示 */}
+      {hover !== null && (
+        <div
+          style={{
+            position: 'absolute',
+            left: `${(pts[hover].x / w) * 100}%`,
+            top: `${(pts[hover].y / h) * 100}%`,
+            transform: 'translate(-50%, calc(-100% - 12px))',
+            background: 'rgba(0,0,0,0.78)',
+            color: '#fff',
+            padding: '6px 10px',
+            borderRadius: 6,
+            fontSize: 12,
+            lineHeight: 1.6,
+            pointerEvents: 'none',
+            whiteSpace: 'nowrap',
+            zIndex: 2,
+          }}
+        >
+          <div style={{ fontWeight: 600 }}>{data[hover].month}</div>
+          <div>金额 ¥{data[hover].amount.toLocaleString()}</div>
+          <div>{data[hover].count} 张发票</div>
+        </div>
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-around', marginTop: 8 }}>
         {data.map((d, i) => (
-          <Tooltip key={i} title={`${d.month}：¥${d.amount.toLocaleString()} · ${d.count} 张`}>
-            <span style={{ fontSize: 12, color: '#666', cursor: 'default' }}>{d.count} 张</span>
-          </Tooltip>
+          <span key={i} style={{ fontSize: 12, color: hover === i ? CHART_BLUE : '#666', fontWeight: hover === i ? 700 : 400 }}>
+            {d.count} 张
+          </span>
         ))}
       </div>
     </div>
@@ -504,10 +571,12 @@ function TrendChart({ data }: { data: any[] }) {
 }
 
 function StatusDonut({ data }: { data: any[] }) {
+  const [hover, setHover] = useState<string | null>(null);
   const total = data.reduce((s, d) => s + d.count, 0);
   const r = 70;
   const c = 2 * Math.PI * r;
   let offset = 0;
+  const hovered = data.find((d) => d.status === hover) || null;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       <svg viewBox="0 0 180 180" style={{ width: 180, height: 180 }}>
@@ -521,21 +590,40 @@ function StatusDonut({ data }: { data: any[] }) {
                 cx={90} cy={90} r={r}
                 fill="none"
                 stroke={STATUS_COLOR[d.status]}
-                strokeWidth={20}
+                strokeWidth={hover === d.status ? 26 : 20}
                 strokeDasharray={`${len} ${c - len}`}
                 strokeDashoffset={-offset}
-              />
+                style={{ cursor: 'pointer', transition: 'stroke-width 0.12s', opacity: hover && hover !== d.status ? 0.4 : 1 }}
+                onMouseEnter={() => setHover(d.status)}
+                onMouseLeave={() => setHover(null)}
+              >
+                <title>{`${d.label}：${d.count} 张 · ¥${d.amount.toLocaleString()}`}</title>
+              </circle>
             );
             offset += len;
             return seg;
           })}
         </g>
-        <text x={90} y={86} fontSize={24} fontWeight={700} fill="#333" textAnchor="middle">{total}</text>
-        <text x={90} y={106} fontSize={12} fill="#999" textAnchor="middle">总发票</text>
+        <text x={90} y={hover ? 78 : 84} fontSize={hover ? 16 : 24} fontWeight={700} fill="#333" textAnchor="middle">
+          {hover ? hovered?.count : total}
+        </text>
+        <text x={90} y={hover ? 98 : 104} fontSize={12} fill="#999" textAnchor="middle">
+          {hover ? hovered?.label : '总发票'}
+        </text>
+        {hover && (
+          <text x={90} y={116} fontSize={11} fill="#999" textAnchor="middle">
+            ¥{hovered?.amount.toLocaleString()}
+          </text>
+        )}
       </svg>
       <div style={{ display: 'flex', gap: 14, marginTop: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
         {data.map((d) => (
-          <div key={d.status} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div
+            key={d.status}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', opacity: hover && hover !== d.status ? 0.4 : 1, transition: 'opacity 0.12s' }}
+            onMouseEnter={() => setHover(d.status)}
+            onMouseLeave={() => setHover(null)}
+          >
             <span style={{ width: 10, height: 10, borderRadius: 2, background: STATUS_COLOR[d.status], display: 'inline-block' }} />
             <span style={{ fontSize: 12, color: '#666' }}>{d.label} {d.count}</span>
           </div>
@@ -568,6 +656,7 @@ function SupplierBars({ data }: { data: any[] }) {
 }
 
 function AgingBars({ data }: { data: any[] }) {
+  const [hover, setHover] = useState<number | null>(null);
   const max = Math.max(1, ...data.map((d) => d.count));
   const w = 320;
   const h = 170;
@@ -581,11 +670,18 @@ function AgingBars({ data }: { data: any[] }) {
           const bh = (d.count / max) * (h - 46);
           const y = h - 24 - bh;
           return (
-            <g key={d.bucket}>
-              <rect x={x} y={y} width={bw} height={Math.max(bh, 2)} rx={4} fill="#ff7875">
+            <g
+              key={d.bucket}
+              onMouseEnter={() => setHover(i)}
+              onMouseLeave={() => setHover(null)}
+              style={{ cursor: 'default' }}
+            >
+              <rect x={x} y={y} width={bw} height={Math.max(bh, 2)} rx={4} fill={hover === i ? '#ff4d4f' : '#ff7875'}>
                 <title>{`${d.bucket}：${d.count} 张 · ¥${d.amount.toLocaleString()}`}</title>
               </rect>
-              <text x={x + bw / 2} y={y - 6} fontSize={12} fill="#ff4d4f" textAnchor="middle">{d.count || ''}</text>
+              <text x={x + bw / 2} y={y - 6} fontSize={12} fill="#ff4d4f" textAnchor="middle" fontWeight={hover === i ? 700 : 400}>
+                {hover === i ? `¥${d.amount.toLocaleString()}` : (d.count || '')}
+              </text>
               <text x={x + bw / 2} y={h - 6} fontSize={11} fill="#999" textAnchor="middle">{d.bucket}</text>
             </g>
           );
@@ -597,6 +693,7 @@ function AgingBars({ data }: { data: any[] }) {
 
 // ===== 待付款到期分布（按剩余天数分桶的面积图） =====
 function PaymentDueDist({ data }: { data: any[] }) {
+  const [hover, setHover] = useState<number | null>(null);
   const W = 560, H = 220;
   const padX = 50, padY = 30, padB = 40;
   const maxVal = Math.max(...data.map((d) => d.amount), 1);
@@ -610,6 +707,7 @@ function PaymentDueDist({ data }: { data: any[] }) {
 
   const line = pts.map((p, i) => (i === 0 ? `M${p.x},${p.y}` : `L${p.x},${p.y}`)).join(' ');
   const area = `${line} L${pts[pts.length - 1].x},${H - padB} L${pts[0].x},${H - padB} Z`;
+  const hp = hover !== null ? pts[hover] : null;
 
   return (
     <div>
@@ -633,19 +731,49 @@ function PaymentDueDist({ data }: { data: any[] }) {
         })}
         <path d={area} fill="url(#dueFill)" />
         <path d={line} fill="none" stroke={CHART_RED} strokeWidth={2.5} />
+        {/* 悬停竖直参考线 */}
+        {hp && (
+          <line x1={hp.x} y1={padY} x2={hp.x} y2={H - padB} stroke={CHART_RED} strokeWidth={1} strokeDasharray="4 4" opacity={0.5} />
+        )}
         {pts.map((p, i) => (
-          <circle key={i} cx={p.x} cy={p.y} r={4.5} fill="#fff" stroke={CHART_RED} strokeWidth={2}>
+          <circle
+            key={i}
+            cx={p.x}
+            cy={p.y}
+            r={hover === i ? 6 : 4.5}
+            fill={hover === i ? CHART_RED : '#fff'}
+            stroke={CHART_RED}
+            strokeWidth={2}
+            style={{ transition: 'r 0.1s', cursor: 'pointer' }}
+            onMouseEnter={() => setHover(i)}
+            onMouseLeave={() => setHover(null)}
+          >
             <title>{p.d.label}：¥{p.d.amount.toLocaleString()} ({p.d.count} 张)</title>
           </circle>
         ))}
+        {hover !== null && (
+          <text x={pts[hover].x} y={pts[hover].y - 12} fontSize={12} fill={CHART_RED} fontWeight={700} textAnchor="middle">
+            ¥{pts[hover].d.amount.toLocaleString()}
+          </text>
+        )}
         {data.map((d, i) => (
-          <text key={i} x={pts[i].x} y={H - 10} fontSize={11} fill="#666" textAnchor="middle">{d.label}</text>
+          <text
+            key={i}
+            x={pts[i].x}
+            y={H - 10}
+            fontSize={11}
+            fill={hover === i ? CHART_RED : '#666'}
+            fontWeight={hover === i ? 700 : 400}
+            textAnchor="middle"
+          >
+            {d.label}
+          </text>
         ))}
       </svg>
       <div style={{ display: 'flex', justifyContent: 'space-around', marginTop: 6, flexWrap: 'wrap', gap: 4 }}>
         {data.map((d, i) => (
           <Tooltip key={i} title={`${d.label}：¥${d.amount.toLocaleString()} · ${d.count} 张`}>
-            <span style={{ fontSize: 12, color: '#666', cursor: 'default' }}>¥{d.amount.toLocaleString()}</span>
+            <span style={{ fontSize: 12, color: hover === i ? CHART_RED : '#666', cursor: 'default', fontWeight: hover === i ? 700 : 400 }}>¥{d.amount.toLocaleString()}</span>
           </Tooltip>
         ))}
       </div>
@@ -656,14 +784,24 @@ function PaymentDueDist({ data }: { data: any[] }) {
 // ===== 本月付款完成率 =====
 function MonthlyRate({ data }: { data: { ratio: number; paid: number; due: number; overallRatio: number; overallPaid: number; overallTotal: number } }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '12px 0' }}>
-      <Progress
-        type="dashboard"
-        percent={data.ratio}
-        strokeColor={data.ratio >= 80 ? '#52c41a' : data.ratio >= 50 ? '#faad14' : '#ff4d4f'}
-        size={150}
-        format={(p) => `${p}%`}
-      />
+    <Tooltip
+      title={
+        <div style={{ lineHeight: 1.8 }}>
+          <div>本月完成率 <b>{data.ratio}%</b></div>
+          <div>已付 ¥{data.paid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+          <div>本月应付 ¥{data.due.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+          <div style={{ borderTop: '1px solid rgba(255,255,255,0.25)', marginTop: 4, paddingTop: 4 }}>累计完成率 {data.overallRatio}%</div>
+        </div>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '12px 0', cursor: 'help' }}>
+        <Progress
+          type="dashboard"
+          percent={data.ratio}
+          strokeColor={data.ratio >= 80 ? '#52c41a' : data.ratio >= 50 ? '#faad14' : '#ff4d4f'}
+          size={150}
+          format={(p) => `${p}%`}
+        />
       <div style={{ fontSize: 13, color: '#999', marginTop: 10, textAlign: 'center', lineHeight: 1.8 }}>
         <div>已付 <span style={{ color: '#52c41a', fontWeight: 600 }}>¥{data.paid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
         <div>本月应付 <span style={{ fontWeight: 600 }}>¥{data.due.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
@@ -675,6 +813,7 @@ function MonthlyRate({ data }: { data: { ratio: number; paid: number; due: numbe
           ¥{data.overallPaid.toLocaleString(undefined, { maximumFractionDigits: 0 })} / ¥{data.overallTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
         </div>
       </div>
-    </div>
+      </div>
+    </Tooltip>
   );
 }
