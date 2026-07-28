@@ -189,6 +189,7 @@ export default function InvoiceListPage() {
       key: 'supplier',
       width: 200,
       ellipsis: true,
+      render: (v: string) => (v || '').replace(/^(名称[：:\s]*)/, ''),
       sorter: (a, b) => (a.supplier_name || '').localeCompare(b.supplier_name || ''),
     },
     {
@@ -531,33 +532,10 @@ export default function InvoiceListPage() {
       {/* Edit Modal */}
       <Modal title="编辑发票" open={editOpen} onCancel={() => setEditOpen(false)} footer={null} width={600}>
         {selectedInvoice && (
-          <Form layout="vertical" initialValues={{
-            ...selectedInvoice,
-            invoice_date: selectedInvoice.invoice_date ? dayjs(selectedInvoice.invoice_date) : null,
-            payment_date: selectedInvoice.payment_date ? dayjs(selectedInvoice.payment_date) : null,
-          }} onFinish={handleEdit}>
-            <Row gutter={16}>
-              <Col span={12}><Form.Item label="发票号码" name="invoice_no"><Input /></Form.Item></Col>
-              <Col span={12}><Form.Item label="业务月份" name="business_month"><Input placeholder="如: 2026年1月" /></Form.Item></Col>
-              <Col span={12}><Form.Item label="开票日期" name="invoice_date"><DatePicker style={{ width: '100%' }} /></Form.Item></Col>
-              <Col span={12}><Form.Item label="付款日期" name="payment_date"><DatePicker style={{ width: '100%' }} /></Form.Item></Col>
-              <Col span={8}><Form.Item label="不含税金额" name="amount_excluding_tax"><Input type="number" /></Form.Item></Col>
-              <Col span={8}><Form.Item label="税额" name="tax_amount"><Input type="number" /></Form.Item></Col>
-              <Col span={8}><Form.Item label="价税合计" name="total_amount"><Input type="number" /></Form.Item></Col>
-              <Col span={12}><Form.Item label="税率" name="tax_rate"><Input placeholder="如: 13%" /></Form.Item></Col>
-              <Col span={12}>
-                <Form.Item label="状态" name="status">
-                  <Select>
-                    <Select.Option value="pending">待付款</Select.Option>
-                    <Select.Option value="paid">已付款</Select.Option>
-                    <Select.Option value="overdue">已逾期</Select.Option>
-                  </Select>
-                </Form.Item>
-              </Col>
-              <Col span={24}><Form.Item label="备注" name="remark"><Input.TextArea rows={2} /></Form.Item></Col>
-            </Row>
-            <Button type="primary" htmlType="submit" block>保存</Button>
-          </Form>
+          <EditInvoiceForm
+            selectedInvoice={selectedInvoice}
+            onDone={() => { setEditOpen(false); fetchInvoices(); }}
+          />
         )}
       </Modal>
 
@@ -598,5 +576,75 @@ export default function InvoiceListPage() {
         </Form>
       </Modal>
     </div>
+  );
+}
+
+// ===== 编辑发票表单（开票日期联动付款日期+90天）=====
+function EditInvoiceForm({ selectedInvoice, onDone }: { selectedInvoice: any; onDone: () => void }) {
+  const [form] = Form.useForm();
+  const invoiceDate = Form.useWatch('invoice_date', form);
+
+  // 开票日期变化时，自动计算付款日期 = 开票日期 + 90 天
+  useEffect(() => {
+    if (invoiceDate && dayjs.isDayjs(invoiceDate)) {
+      const payDate = invoiceDate.add(90, 'day');
+      form.setFieldsValue({ payment_date: payDate });
+    }
+  }, [invoiceDate]);
+
+  const handleFinish = async (values: any) => {
+    try {
+      const payload: any = { ...values };
+      if (payload.invoice_date) payload.invoice_date = dayjs(payload.invoice_date).format('YYYY-MM-DD');
+      if (payload.payment_date) payload.payment_date = dayjs(payload.payment_date).format('YYYY-MM-DD');
+      await invoiceApi.update(selectedInvoice.id, payload);
+      message.success('更新成功');
+      onDone();
+    } catch (err: any) {
+      message.error(err.response?.data?.detail || '更新失败');
+    }
+  };
+
+  return (
+    <Form
+      form={form}
+      layout="vertical"
+      initialValues={{
+        ...selectedInvoice,
+        invoice_date: selectedInvoice.invoice_date ? dayjs(selectedInvoice.invoice_date) : null,
+        payment_date: selectedInvoice.payment_date ? dayjs(selectedInvoice.payment_date) : null,
+      }}
+      onFinish={handleFinish}
+    >
+      <Row gutter={16}>
+        <Col span={12}><Form.Item label="发票号码" name="invoice_no"><Input /></Form.Item></Col>
+        <Col span={12}><Form.Item label="业务月份" name="business_month"><Input placeholder="如: 2026年1月" /></Form.Item></Col>
+        <Col span={12}>
+          <Form.Item label="开票日期" name="invoice_date">
+            <DatePicker style={{ width: '100%' }} />
+          </Form.Item>
+        </Col>
+        <Col span={12}>
+          <Form.Item label="付款日期" name="payment_date" tooltip="随开票日期自动+90天，也可手动修改">
+            <DatePicker style={{ width: '100%' }} />
+          </Form.Item>
+        </Col>
+        <Col span={8}><Form.Item label="不含税金额" name="amount_excluding_tax"><Input type="number" /></Form.Item></Col>
+        <Col span={8}><Form.Item label="税额" name="tax_amount"><Input type="number" /></Form.Item></Col>
+        <Col span={8}><Form.Item label="价税合计" name="total_amount"><Input type="number" /></Form.Item></Col>
+        <Col span={12}><Form.Item label="税率" name="tax_rate"><Input placeholder="如: 13%" /></Form.Item></Col>
+        <Col span={12}>
+          <Form.Item label="状态" name="status">
+            <Select>
+              <Select.Option value="pending">待付款</Select.Option>
+              <Select.Option value="paid">已付款</Select.Option>
+              <Select.Option value="overdue">已逾期</Select.Option>
+            </Select>
+          </Form.Item>
+        </Col>
+        <Col span={24}><Form.Item label="备注" name="remark"><Input.TextArea rows={2} /></Form.Item></Col>
+      </Row>
+      <Button type="primary" htmlType="submit" block>保存</Button>
+    </Form>
   );
 }

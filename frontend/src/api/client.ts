@@ -421,6 +421,44 @@ export const dashboardApi = {
         invoices,
       };
     }),
+
+  recentInvoices: () =>
+    guard<any[]>(() => {
+      const userId = getUserId();
+      const db = readDB();
+      const suppliers = db.suppliers.filter((s) => s.userId === userId);
+      return db.invoices
+        .filter((i) => i.userId === userId)
+        .map((i) => decorate(i, suppliers))
+        .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
+        .slice(0, 5)
+        .map((i) => ({
+          id: i.id,
+          invoice_no: i.invoice_no,
+          supplier_name: i.supplier_name,
+          total_amount: i.total_amount,
+          status: i.status,
+          payment_date: i.payment_date,
+          image_data: i.image_data ? true : false,
+        }));
+    }),
+
+  recentSuppliers: () =>
+    guard<any[]>(() => {
+      const userId = getUserId();
+      const db = readDB();
+      return db.suppliers
+        .filter((s) => s.userId === userId)
+        .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
+        .slice(0, 5)
+        .map((s) => ({
+          id: s.id,
+          name: s.name,
+          tax_id: s.tax_id,
+          contact_person: s.contact_person,
+          created_at: s.created_at,
+        }));
+    }),
 };
 
 export default {};

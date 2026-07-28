@@ -101,7 +101,7 @@ export default function SupplierListPage() {
       render: (v: string) => (
         <span style={{ color: '#1677ff', fontWeight: 500 }}>
           <TeamOutlined style={{ marginRight: 6 }} />
-          {v}
+          {(v || '').replace(/^(名称[：:\s]*)/, '')}
         </span>
       ),
     },
