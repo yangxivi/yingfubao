@@ -48,7 +48,7 @@ function buildTrendPaths(data: { amount: number }[]) {
   return { line, area, pts, w, h, padX, padY };
 }
 
-type TabKey = 'overdue' | '15' | '30' | '60' | '90';
+type TabKey = 'overdue' | '30' | '60' | '90' | '120' | '150' | '180';
 
 export default function DashboardPage() {
   const [data, setData] = useState<any>(null);
@@ -93,10 +93,12 @@ export default function DashboardPage() {
       const daysLeft = dayjs(inv.payment_date).diff(today, 'day');
       switch (tabKey) {
         case 'overdue': return daysLeft < 0;
-        case '15': return daysLeft >= 0 && daysLeft <= 15;
-        case '30': return daysLeft > 15 && daysLeft <= 30;
+        case '30': return daysLeft >= 0 && daysLeft <= 30;
         case '60': return daysLeft > 30 && daysLeft <= 60;
         case '90': return daysLeft > 60 && daysLeft <= 90;
+        case '120': return daysLeft > 90 && daysLeft <= 120;
+        case '150': return daysLeft > 120 && daysLeft <= 150;
+        case '180': return daysLeft > 150 && daysLeft <= 180;
         default: return false;
       }
     }).length;
@@ -111,10 +113,12 @@ export default function DashboardPage() {
       const daysLeft = dayjs(inv.payment_date).diff(today, 'day');
       switch (activeTab) {
         case 'overdue': return daysLeft < 0;
-        case '15': return daysLeft >= 0 && daysLeft <= 15;
-        case '30': return daysLeft > 15 && daysLeft <= 30;
+        case '30': return daysLeft >= 0 && daysLeft <= 30;
         case '60': return daysLeft > 30 && daysLeft <= 60;
         case '90': return daysLeft > 60 && daysLeft <= 90;
+        case '120': return daysLeft > 90 && daysLeft <= 120;
+        case '150': return daysLeft > 120 && daysLeft <= 150;
+        case '180': return daysLeft > 150 && daysLeft <= 180;
         default: return false;
       }
     });
@@ -125,10 +129,12 @@ export default function DashboardPage() {
   // Tab 配置（计数从同一份列表实时计算，保证数字与下方列表一致）
   const tabs: { key: TabKey; label: string; count: number; danger?: boolean }[] = [
     { key: 'overdue', label: '已逾期', count: countByTab('overdue'), danger: true },
-    { key: '15', label: '15天内', count: countByTab('15') },
     { key: '30', label: '30天内', count: countByTab('30') },
     { key: '60', label: '60天内', count: countByTab('60') },
     { key: '90', label: '90天内', count: countByTab('90') },
+    { key: '120', label: '120天内', count: countByTab('120') },
+    { key: '150', label: '150天内', count: countByTab('150') },
+    { key: '180', label: '180天内', count: countByTab('180') },
   ];
 
   const getStatusTag = (paymentDate: string) => {
