@@ -340,68 +340,94 @@ function parseStructured(full: string, lines: string[]): OcrResult {
     [buyer_name, seller_name] = [seller_name, buyer_name];
   }
 
-  // ---- 6. 税号（基于公司名称文本距离匹配）----
+  // ---- 6. 税号（基于行级邻近度匹配）----
   // 增值税发票上"销售方"和"购买方"是左右并排的，OCR 行序会交叉。
-  // 行索引区域划分不可靠（两栏内容可能合并到同一行或交替出现）。
-  // 可靠方案：用已提取的 seller_name / buyer_name 作为强锚点，
-  // 对每个税号计算其在原始文本中离哪个名称更近（字符距离），就近归属。
+  // 字符距离（full.indexOf）不可靠：indexOf 只返回首次出现位置，同名重复时错位。
+  // 行索引区域划分也不可靠：左右并排内容可能合并到同一行。
+  //
+  // 最可靠方案：利用发票版面结构特征——税号在物理位置上就在对应公司名称的
+  // 正下方（或紧邻行）。对每个税号，找离它行索引最近的公司名称，
+  // 再判断该公司名称是销售方还是购买方。
   let seller_tax_id = '';
   let buyer_tax_id = '';
 
-  // 收集所有税号及其在原始文本中的位置
-  const allTaxIds: { id: string; pos: number; lineIdx: number }[] = [];
+  // 收集所有公司名称及其行索引
+  const allCompanies: { name: string; lineIdx: number }[] = [];
   for (let i = 0; i < lines.length; i++) {
-    const tid = parseTaxId(lines[i]);
-    if (tid) {
-      const pos = full.indexOf(tid); // 在原始文本中的首次位置
-      allTaxIds.push({ id: tid.toUpperCase(), pos, lineIdx: i });
+    const line = lines[i];
+    // 匹配 "名称：xxx公司" 格式的完整公司名
+    const nameMatch = line.match(/名称[：:\s]*([^\n\r]{4,40}?)/);
+    if (nameMatch) {
+      const candidate = nameMatch[1].trim().replace(/[：:\s]+$/, '');
+      if (candidate.length >= 4 && candidate.length <= 40 &&
+          (candidate.includes('公司') || candidate.includes('厂') || candidate.includes('有限') || candidate.includes('中心'))) {
+        allCompanies.push({ name: candidate, lineIdx: i });
+      }
+    }
+    // 也匹配独立的公司名行（不含"名称："前缀），排除非公司行
+    else if (
+      (line.includes('公司') || line.includes('厂') || line.includes('有限') || line.includes('中心')) &&
+      line.length >= 4 && line.length <= 40 &&
+      !/^[0-9\s年明月日¥￥]+$/.test(line) &&
+      !line.includes('纳税人') && !line.includes('识别号') &&
+      !line.includes('电话') && !line.includes('地址') &&
+      !line.includes('开户') && !line.includes('账号')
+    ) {
+      allCompanies.push({ name: line.trim(), lineIdx: i });
     }
   }
 
-  if (seller_name && buyer_name && allTaxIds.length > 0) {
-    // 找两个名称在原始文本中的位置
-    const sellerNamePos = full.indexOf(seller_name);
-    const buyerNamePos = full.indexOf(buyer_name);
+  // 收集所有税号及其行索引
+  const allTaxIds: { id: string; lineIdx: number }[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const tid = parseTaxId(lines[i]);
+    if (tid) allTaxIds.push({ id: tid.toUpperCase(), lineIdx: i });
+  }
 
-    if (sellerNamePos >= 0 && buyerNamePos >= 0) {
-      // 对每个税号，计算到两个名称的距离，就近归属
-      const assigned: number[] = []; // 已分配的税号索引
-
-      for (let ti = 0; ti < allTaxIds.length; ti++) {
-        const t = allTaxIds[ti];
-        if (t.pos < 0) continue;
-
-        const distToSeller = Math.abs(t.pos - sellerNamePos);
-        const distToBuyer = Math.abs(t.pos - buyerNamePos);
-
-        if (distToSeller < distToBuyer && !seller_tax_id) {
-          seller_tax_id = t.id;
-          assigned.push(ti);
-        } else if (distToBuyer < distToSeller && !buyer_tax_id) {
-          buyer_tax_id = t.id;
-          assigned.push(ti);
+  // 核心匹配：每个税号 → 行距离最近的公司名称 → 判断是seller还是buyer
+  if (allTaxIds.length > 0 && allCompanies.length > 0) {
+    for (const t of allTaxIds) {
+      // 找离这个税号行索引最近的公司名称
+      let nearestDist = Infinity;
+      let nearestName = '';
+      for (const c of allCompanies) {
+        const dist = Math.abs(t.lineIdx - c.lineIdx);
+        if (dist < nearestDist) {
+          nearestDist = dist;
+          nearestName = c.name;
         }
       }
 
-      // 如果还有未分配的税号（距离相等或极端情况），用行索引辅助
-      for (let ti = 0; ti < allTaxIds.length; ti++) {
-        if (assigned.includes(ti)) continue;
-        const t = allTaxIds[ti];
-        if (!seller_tax_id) { seller_tax_id = t.id; }
-        else if (!buyer_tax_id) { buyer_tax_id = t.id; }
+      // 判断这个最近的公司名称是 seller 还是 buyer
+      const isSellerExact = nearestName === seller_name;
+      const isBuyerExact = nearestName === buyer_name;
+      // 容差匹配：公司名包含关系（OCR 可能多/少几个字）
+      const isSellerFuzzy = seller_name && (
+        nearestName.includes(seller_name) ||
+        seller_name.includes(nearestName)
+      ) && Math.abs(nearestName.length - seller_name.length) <= 3;
+      const isBuyerFuzzy = buyer_name && (
+        nearestName.includes(buyer_name) ||
+        buyer_name.includes(nearestName)
+      ) && Math.abs(nearestName.length - buyer_name.length) <= 3;
+
+      if ((isSellerExact || isSellerFuzzy) && !seller_tax_id) {
+        seller_tax_id = t.id;
+      } else if ((isBuyerExact || isBuyerFuzzy) && !buyer_tax_id) {
+        buyer_tax_id = t.id;
       }
     }
   }
 
-  // 兜底1：如果名称距离匹配没找到（比如某个名称为空），回退到行索引区域
+  // 兜底1：如果行级邻近度没匹配上，回退到行索引区域
   if ((!seller_tax_id || !buyer_tax_id) && allTaxIds.length > 0) {
-    const sellerIdx = findLineIndex(lines, '销售方');
-    const buyerIdx = findLineIndex(lines, '购买方');
+    const sIdx = findLineIndex(lines, '销售方');
+    const bIdx = findLineIndex(lines, '购买方');
 
-    if (sellerIdx >= 0 && buyerIdx >= 0) {
-      const firstIdx = Math.min(sellerIdx, buyerIdx);
-      const secondIdx = Math.max(sellerIdx, buyerIdx);
-      const firstIsSeller = sellerIdx < buyerIdx;
+    if (sIdx >= 0 && bIdx >= 0) {
+      const firstIdx = Math.min(sIdx, bIdx);
+      const secondIdx = Math.max(sIdx, bIdx);
+      const firstIsSeller = sIdx < bIdx;
 
       for (const t of allTaxIds) {
         if (t.lineIdx > firstIdx && t.lineIdx < secondIdx) {
@@ -414,14 +440,13 @@ function parseStructured(full: string, lines: string[]): OcrResult {
       }
     }
 
-    // 兜底2：区域内全文搜索
-    if (!seller_tax_id && sellerIdx >= 0) {
-      const blockEnd = buyerIdx > sellerIdx ? buyerIdx : lines.length;
-      const stid = parseTaxId(extractBlock(lines, sellerIdx + 1, blockEnd));
+    if (!seller_tax_id && sIdx >= 0) {
+      const blockEnd = bIdx > sIdx ? bIdx : lines.length;
+      const stid = parseTaxId(extractBlock(lines, sIdx + 1, blockEnd));
       if (stid) seller_tax_id = stid;
     }
-    if (!buyer_tax_id && buyerIdx >= 0) {
-      const blockStart = sellerIdx >= 0 && sellerIdx < buyerIdx ? buyerIdx : 0;
+    if (!buyer_tax_id && bIdx >= 0) {
+      const blockStart = sIdx >= 0 && sIdx < bIdx ? bIdx : 0;
       const btid = parseTaxId(extractBlock(lines, blockStart));
       if (btid) buyer_tax_id = btid;
     }
@@ -434,7 +459,6 @@ function parseStructured(full: string, lines: string[]): OcrResult {
     if (!seller_tax_id && uniqGlobal[1]) seller_tax_id = uniqGlobal[1];
     else if (!seller_tax_id && uniqGlobal[0]) seller_tax_id = uniqGlobal[0];
   }
-
   return {
     invoice_no,
     invoice_date,
