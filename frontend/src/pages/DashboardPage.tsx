@@ -215,38 +215,38 @@ export default function DashboardPage() {
             <span style={{ fontSize: 12, color: '#999', fontWeight: 400, marginLeft: 8 }}>可视化数据概览</span>
           </div>
 
-          <Row gutter={[16, 16]}>
+          <Row gutter={[16, 16]} className="cockpit-row">
             {/* 月度趋势 */}
             <Col xs={24} lg={16}>
-              <Card title="近 6 个月发票趋势">
+              <Card title="近 6 个月发票趋势" className="cockpit-card">
                 <TrendChart data={analytics.monthlyTrend} />
               </Card>
             </Col>
 
             {/* 付款状态分布 */}
             <Col xs={24} lg={8}>
-              <Card title="付款状态分布">
+              <Card title="付款状态分布" className="cockpit-card">
                 <StatusDonut data={analytics.statusDistribution} />
               </Card>
             </Col>
 
             {/* 供应商 TOP5 */}
             <Col xs={24} md={12} lg={8}>
-              <Card title="供应商 TOP5（按金额）">
+              <Card title="供应商 TOP5（按金额）" className="cockpit-card">
                 <SupplierBars data={analytics.topSuppliers} />
               </Card>
             </Col>
 
             {/* 账龄分布 */}
             <Col xs={24} md={12} lg={8}>
-              <Card title="账龄分布（逾期）">
+              <Card title="账龄分布（逾期）" className="cockpit-card">
                 <AgingBars data={analytics.aging} />
               </Card>
             </Col>
 
             {/* 付款进度 */}
             <Col xs={24} lg={8}>
-              <Card title="付款进度">
+              <Card title="付款进度" className="cockpit-card">
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '6px 0' }}>
                   <Progress
                     type="dashboard"
