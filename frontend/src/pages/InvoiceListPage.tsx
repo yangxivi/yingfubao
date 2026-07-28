@@ -89,6 +89,23 @@ export default function InvoiceListPage() {
     } catch (err) { /* handled */ }
   };
 
+  // 批量删除
+  const [batchDeleting, setBatchDeleting] = useState(false);
+  const handleBatchDelete = async () => {
+    if (selectedRowKeys.length === 0) return;
+    setBatchDeleting(true);
+    try {
+      await Promise.all(selectedRowKeys.map((id) => invoiceApi.delete(id)));
+      message.success(`已删除 ${selectedRowKeys.length} 条发票`);
+      setSelectedRowKeys([]);
+      fetchInvoices();
+    } catch (err: any) {
+      message.error(err.response?.data?.detail || '批量删除失败');
+    } finally {
+      setBatchDeleting(false);
+    }
+  };
+
   const handleEdit = async (values: any) => {
     if (!selectedInvoice) return;
     try {
@@ -446,6 +463,20 @@ export default function InvoiceListPage() {
             </Checkbox>
             <Statistic title="选中数量" value={selectedSummary.count} suffix="条" style={{ fontSize: 14 }} />
             <Statistic title="合计金额" value={selectedSummary.totalAmount} prefix="¥" precision={2} style={{ fontSize: 14 }} valueStyle={{ color: '#cf1322', fontWeight: 600 }} />
+            <div style={{ marginLeft: 'auto' }}>
+              <Popconfirm
+                title={`确认删除选中的 ${selectedRowKeys.length} 条发票？`}
+                description="删除后不可恢复"
+                onConfirm={handleBatchDelete}
+                okText="确认删除"
+                cancelText="取消"
+                okButtonProps={{ danger: true }}
+              >
+                <Button danger icon={<DeleteOutlined />} loading={batchDeleting}>
+                  批量删除（{selectedRowKeys.length}）
+                </Button>
+              </Popconfirm>
+            </div>
           </div>
         )}
 
