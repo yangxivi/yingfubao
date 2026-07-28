@@ -128,7 +128,6 @@ export default function SupplierListPage() {
       sorter: (a, b) => (a.name || '').localeCompare(b.name || ''),
       render: (v: string) => (
         <span style={{ color: '#1677ff', fontWeight: 500 }}>
-          <TeamOutlined style={{ marginRight: 6 }} />
           {(v || '').replace(/^(名称[：:\s]*)/, '')}
         </span>
       ),
