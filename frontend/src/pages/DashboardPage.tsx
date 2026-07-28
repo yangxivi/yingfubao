@@ -641,9 +641,9 @@ function SupplierBars({ data }: { data: any[] }) {
       {data.map((d, i) => (
         <Tooltip key={i} title={`${d.name}：¥${d.amount.toLocaleString()} · ${d.count} 张`}>
           <div style={{ cursor: 'default' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
-              <span style={{ color: '#333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 110 }}>{d.name}</span>
-              <span style={{ color: '#666', flexShrink: 0, marginLeft: 8 }}>¥{d.amount.toLocaleString()}</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4, alignItems: 'baseline' }}>
+              <span style={{ color: '#333', flex: 1, minWidth: 0 }}>{d.name}</span>
+              <span style={{ color: '#666', flexShrink: 0, marginLeft: 12 }}>¥{d.amount.toLocaleString()}</span>
             </div>
             <div style={{ background: '#f5f5f5', borderRadius: 6, height: 8, overflow: 'hidden' }}>
               <div style={{ width: `${(d.amount / max) * 100}%`, height: '100%', background: SUPPLIER_COLORS[i % SUPPLIER_COLORS.length], borderRadius: 6 }} />
