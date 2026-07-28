@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Card, Upload, Button, Statistic, message, Space, Empty,
+  Card, Upload, Button, Statistic, message, Space, Empty, Progress,
 } from 'antd';
 import type { UploadProps } from 'antd';
 import {
@@ -21,34 +21,67 @@ const { Dragger } = Upload;
 export default function UploadPage() {
   const navigate = useNavigate();
   const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<string>('');
+  const [batch, setBatch] = useState<{ total: number; done: number }>({ total: 0, done: 0 });
+  const [currentName, setCurrentName] = useState('');
   const [stats, setStats] = useState({ success: 0, fail: 0, skip: 0 });
   const uploadQueue = useRef<Promise<any>>(Promise.resolve());
+  // 整批进度用 ref 维护，避免闭包拿到旧的 state
+  const batchRef = useRef<{ total: number; done: number }>({ total: 0, done: 0 });
+  const resultRef = useRef<{ success: number; fail: number }>({ success: 0, fail: 0 });
+
+  // 抓取整批文件总数（multiple 时 beforeUpload 最后一次 fileList 为全部文件）
+  const beforeUpload: UploadProps['beforeUpload'] = (file, fileList) => {
+    if (fileList && fileList.length > 0) {
+      if (!uploading) {
+        batchRef.current = { total: fileList.length, done: 0 };
+        resultRef.current = { success: 0, fail: 0 };
+        setBatch({ total: fileList.length, done: 0 });
+        setUploading(true);
+      } else {
+        // 正在处理中又来了新一批，合并计数
+        batchRef.current.total += fileList.length;
+        setBatch((b) => ({ ...b, total: batchRef.current.total }));
+      }
+    }
+    return true; // 交给 customRequest 处理
+  };
 
   const handleUpload: UploadProps['customRequest'] = (options: any) => {
     const run = async () => {
+      const cur = batchRef.current.done + 1; // 当前正在处理的第几张
+      setCurrentName(options.file.name);
       try {
-        setUploading(true);
-        const res = await invoiceApi.upload(options.file, (cur: number, total: number) => {
-          setUploadProgress(`正在识别第 ${cur} 张 / 共 ${total} 张`);
-        });
+        const res = await invoiceApi.upload(options.file);
         options.onSuccess?.({});
         const inv = res.data as any;
         const supName = inv.supplier_name || inv.seller_name || '未知';
         message.success(`${options.file.name} 已识别，供应商「${supName}」已自动建档`);
         setStats((s) => ({ ...s, success: s.success + 1 }));
+        resultRef.current.success += 1;
       } catch (err: any) {
         options.onError?.(err);
         const detail = err?.response?.data?.detail || err?.message || '上传失败';
         message.error(`${options.file.name}：${detail}`);
         setStats((s) => ({ ...s, fail: s.fail + 1 }));
+        resultRef.current.fail += 1;
       } finally {
-        setUploading(false);
-        setUploadProgress('');
+        batchRef.current.done += 1;
+        setBatch({ total: batchRef.current.total, done: batchRef.current.done });
+        if (batchRef.current.done >= batchRef.current.total) {
+          // 全部完成
+          setUploading(false);
+          setCurrentName('');
+          message.success(
+            `已全部完成！共处理 ${batchRef.current.total} 张发票（成功 ${resultRef.current.success} 张，失败 ${resultRef.current.fail} 张）`,
+          );
+        }
       }
     };
+    // 串行处理，保证进度计数准确
     uploadQueue.current = uploadQueue.current.then(run);
   };
+
+  const percent = batch.total > 0 ? Math.round((batch.done / batch.total) * 100) : 0;
 
   return (
     <div>
@@ -71,6 +104,7 @@ export default function UploadPage() {
             </p>
             <Dragger
               customRequest={handleUpload}
+              beforeUpload={beforeUpload}
               showUploadList={false}
               multiple
               accept=".png,.jpg,.jpeg,.pdf,.bmp,.tiff"
@@ -84,10 +118,17 @@ export default function UploadPage() {
               {uploading ? (
                 <>
                   <div style={{ fontSize: 40, color: '#1677ff', marginBottom: 12 }}>⏳</div>
-                  <p style={{ fontSize: 16, fontWeight: 600, color: '#1677ff', marginBottom: 8 }}>
-                    {uploadProgress || '正在识别中…'}
+                  <p style={{ fontSize: 16, fontWeight: 600, color: '#1677ff', marginBottom: 6 }}>
+                    正在处理第 {Math.min(batch.done + 1, batch.total)} 张 / 共 {batch.total} 张
                   </p>
-                  <p style={{ color: '#999', fontSize: 13 }}>请稍候，正在处理</p>
+                  <p style={{ color: '#666', fontSize: 13, marginBottom: 12 }}>
+                    {currentName || '准备中…'}
+                  </p>
+                  <Progress
+                    percent={percent}
+                    strokeColor="#1677ff"
+                    style={{ maxWidth: 320, margin: '0 auto' }}
+                  />
                 </>
               ) : (
                 <>
