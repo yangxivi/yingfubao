@@ -4,6 +4,7 @@
 import { supabase } from './supabase';
 import { initUserDB, clearUserCache } from './db';
 import type { User } from './db';
+import { setAccountPeriod } from './accountPeriod';
 
 const SESSION_KEY = 'token';
 const USER_KEY = 'user';
@@ -49,7 +50,13 @@ export async function verifyPassword(password: string, stored: string): Promise<
 }
 
 export function publicUser(u: User) {
-  return { id: u.id, username: u.username, company_name: u.company_name, email: u.email };
+  return {
+    id: u.id,
+    username: u.username,
+    company_name: u.company_name,
+    email: u.email,
+    account_period: u.account_period ?? 90,
+  };
 }
 
 function makeToken(userId: string): string {
@@ -108,9 +115,11 @@ export async function registerUser(data: {
     passwordHash: row.password_hash,
     company_name: row.company_name,
     email: row.email,
+    account_period: (row as any).account_period ?? 90,
     created_at: row.created_at,
   };
   setSession(user);
+  setAccountPeriod(user.account_period);
   await initUserDB(user.id);
   return { access_token: makeToken(user.id), user: publicUser(user) };
 }
@@ -135,9 +144,11 @@ export async function loginUser(data: {
     passwordHash: row.password_hash,
     company_name: row.company_name,
     email: row.email,
+    account_period: (row as any).account_period ?? 90,
     created_at: row.created_at,
   };
   setSession(user);
+  setAccountPeriod(user.account_period);
   await initUserDB(user.id);
   return { access_token: makeToken(user.id), user: publicUser(user) };
 }
@@ -148,4 +159,38 @@ export async function getMe() {
   const { data: row, error } = await supabase.from('users').select('*').eq('id', id).maybeSingle();
   if (error || !row) throw new Error('未登录');
   return publicUser(row as User);
+}
+
+/** 返回当前会话用户（含 account_period），未登录返回 null */
+export function getCurrentUser(): ReturnType<typeof publicUser> | null {
+  const raw = localStorage.getItem(USER_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+/** 更新当前用户的账期天数，并同步本地会话 */
+export async function updateAccountPeriod(period: number): Promise<void> {
+  const id = getCurrentUserId();
+  if (!id) throw new Error('未登录');
+  const { error } = await supabase
+    .from('users')
+    .update({ account_period: period })
+    .eq('id', id);
+  if (error) throw new Error(error.message || '更新失败');
+  // 更新本地会话
+  const raw = localStorage.getItem(USER_KEY);
+  if (raw) {
+    try {
+      const u = JSON.parse(raw);
+      u.account_period = period;
+      localStorage.setItem(USER_KEY, JSON.stringify(u));
+    } catch {
+      /* ignore */
+    }
+  }
+  setAccountPeriod(period);
 }

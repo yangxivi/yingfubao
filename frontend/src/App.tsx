@@ -10,6 +10,8 @@ import RemindersPage from './pages/RemindersPage';
 import UploadPage from './pages/UploadPage';
 import { getCurrentUserId } from './lib/auth';
 import { initUserDB } from './lib/db';
+import { initAccountPeriodFromSession } from './lib/accountPeriod';
+import SettingsPage from './pages/SettingsPage';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const token = localStorage.getItem('token');
@@ -24,6 +26,7 @@ export default function App() {
   useEffect(() => {
     const token = localStorage.getItem('token');
     const userId = getCurrentUserId();
+    initAccountPeriodFromSession(); // 从会话恢复账期设置
     if (!token || !userId) {
       setReady(true);
       return;
@@ -46,6 +49,7 @@ export default function App() {
         <Route path="invoice-list" element={<InvoiceListPage />} />
         <Route path="suppliers" element={<SupplierListPage />} />
         <Route path="reminders" element={<RemindersPage />} />
+        <Route path="settings" element={<SettingsPage />} />
       </Route>
     </Routes>
   );

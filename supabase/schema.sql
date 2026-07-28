@@ -12,6 +12,7 @@ create table if not exists public.users (
   password_hash text not null,
   company_name text default '',
   email text default '',
+  account_period integer default 90, -- 全局账期天数
   created_at timestamptz default now()
 );
 
@@ -49,6 +50,7 @@ create table if not exists public.invoices (
   seller_name text default '',
   seller_tax_id text default '',
   status text default 'pending',
+  payment_auto boolean default true, -- 付款日期是否由账期自动派生
   raw_text text default '',
   file_name text default '',
   image_data text default '',

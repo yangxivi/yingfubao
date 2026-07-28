@@ -14,6 +14,7 @@ export interface User {
   passwordHash: string;
   company_name: string;
   email: string;
+  account_period: number; // 账期天数，默认 90
   created_at: string;
 }
 
@@ -49,6 +50,7 @@ export interface Invoice {
   seller_name: string;
   seller_tax_id: string;
   status: string; // pending | paid （overdue 为查询时派生）
+  payment_auto: boolean; // 付款日期是否由账期自动派生（手动修改则为 false）
   raw_text: string;
   file_name: string;
   image_data: string; // base64 原始发票图片
@@ -140,6 +142,7 @@ function invoiceToRow(i: Invoice): Record<string, unknown> {
     seller_name: i.seller_name,
     seller_tax_id: i.seller_tax_id,
     status: i.status,
+    payment_auto: i.payment_auto,
     raw_text: i.raw_text,
     file_name: i.file_name,
     image_data: i.image_data,
@@ -166,6 +169,7 @@ function rowToInvoice(r: any): Invoice {
     seller_name: r.seller_name,
     seller_tax_id: r.seller_tax_id,
     status: r.status,
+    payment_auto: r.payment_auto !== false, // 旧数据缺省视为自动派生
     raw_text: r.raw_text,
     file_name: r.file_name,
     image_data: r.image_data,

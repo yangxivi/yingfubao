@@ -13,6 +13,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import type { TableRowSelection as AntTableRowSelection } from 'antd/es/table/interface';
 import { invoiceApi, supplierApi } from '../api/client';
+import { getAccountPeriod } from '../lib/accountPeriod';
 import dayjs from 'dayjs';
 
 export default function InvoiceListPage() {
@@ -611,7 +612,7 @@ export default function InvoiceListPage() {
             <Col span={12}><Form.Item label="发票号码" name="invoice_no" rules={[{ required: true, message: '请输入发票号码' }]}><Input /></Form.Item></Col>
             <Col span={12}><Form.Item label="业务月份" name="business_month"><Input placeholder="如: 2026年1月" /></Form.Item></Col>
             <Col span={12}><Form.Item label="开票日期" name="invoice_date" rules={[{ required: true, message: '请选择开票日期' }]}><DatePicker style={{ width: '100%' }} /></Form.Item></Col>
-            <Col span={12}><Form.Item label="付款日期" name="payment_date" tooltip="留空则按开票日期+90天自动计算"><DatePicker style={{ width: '100%' }} /></Form.Item></Col>
+            <Col span={12}><Form.Item label="付款日期" name="payment_date" tooltip={`留空则按开票日期+${getAccountPeriod()}天自动计算`}><DatePicker style={{ width: '100%' }} /></Form.Item></Col>
             <Col span={8}><Form.Item label="不含税金额" name="amount_excluding_tax"><Input type="number" /></Form.Item></Col>
             <Col span={8}><Form.Item label="税额" name="tax_amount"><Input type="number" /></Form.Item></Col>
             <Col span={8}><Form.Item label="价税合计" name="total_amount"><Input type="number" /></Form.Item></Col>
@@ -633,15 +634,15 @@ export default function InvoiceListPage() {
   );
 }
 
-// ===== 编辑发票表单（开票日期联动付款日期+90天）=====
+// ===== 编辑发票表单（开票日期联动付款日期+账期天数）=====
 function EditInvoiceForm({ selectedInvoice, onDone }: { selectedInvoice: any; onDone: () => void }) {
   const [form] = Form.useForm();
   const invoiceDate = Form.useWatch('invoice_date', form);
 
-  // 开票日期变化时，自动计算付款日期 = 开票日期 + 90 天
+  // 开票日期变化时，自动计算付款日期 = 开票日期 + 全局账期天数
   useEffect(() => {
     if (invoiceDate && dayjs.isDayjs(invoiceDate)) {
-      const payDate = invoiceDate.add(90, 'day');
+      const payDate = invoiceDate.add(getAccountPeriod(), 'day');
       form.setFieldsValue({ payment_date: payDate });
     }
   }, [invoiceDate]);
@@ -679,7 +680,7 @@ function EditInvoiceForm({ selectedInvoice, onDone }: { selectedInvoice: any; on
           </Form.Item>
         </Col>
         <Col span={12}>
-          <Form.Item label="付款日期" name="payment_date" tooltip="随开票日期自动+90天，也可手动修改">
+          <Form.Item label="付款日期" name="payment_date" tooltip={`随开票日期自动+${getAccountPeriod()}天，也可手动修改`}>
             <DatePicker style={{ width: '100%' }} />
           </Form.Item>
         </Col>

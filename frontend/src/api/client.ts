@@ -7,6 +7,7 @@ import { readDB, writeDB, nextId } from '../lib/db';
 import type { Invoice, Supplier } from '../lib/db';
 import * as authLib from '../lib/auth';
 import { recognizeInvoice } from '../lib/ocr';
+import { getAccountPeriod } from '../lib/accountPeriod';
 import dayjs from 'dayjs';
 
 // ------- 错误处理：兼容 axios 风格 -------
@@ -165,6 +166,7 @@ export const authApi = {
     guard(() => authLib.registerUser(data)),
   login: (data: { username: string; password: string }) => guard(() => authLib.loginUser(data)),
   me: () => guard(() => authLib.getMe()),
+  updateAccountPeriod: (period: number) => guard(() => authLib.updateAccountPeriod(period)),
 };
 
 // ------- Invoices -------
@@ -221,7 +223,8 @@ export const invoiceApi = {
         return decorate(dup, suppliers);
       }
       const id = nextId(db, 'invoices');
-      const payment_date = data.payment_date || addDays(data.invoice_date, 90);
+      const payment_date = data.payment_date || addDays(data.invoice_date, getAccountPeriod());
+      const paymentAuto = !data.payment_date; // 用户未填付款日期 = 自动派生
       const inv: Invoice = {
         id,
         userId,
@@ -240,6 +243,7 @@ export const invoiceApi = {
         seller_name: data.seller_name || '',
         seller_tax_id: data.seller_tax_id || '',
         status: data.status || 'pending',
+        payment_auto: paymentAuto,
         raw_text: data.raw_text || '',
         file_name: data.file_name || '',
         image_data: data.image_data || '',
@@ -278,7 +282,8 @@ export const invoiceApi = {
         supplier_id: supplierId,
         invoice_no: result.invoice_no,
         invoice_date: result.invoice_date,
-        payment_date: addDays(result.invoice_date, 90),
+        payment_date: addDays(result.invoice_date, getAccountPeriod()),
+        payment_auto: true,
         amount_excluding_tax: result.amount_excluding_tax,
         tax_amount: result.tax_amount,
         total_amount: result.total_amount,
@@ -322,7 +327,9 @@ export const invoiceApi = {
         if (data[f] !== undefined) (inv as any)[f] = data[f];
       }
       if (data.payment_date !== undefined) {
-        inv.payment_date = data.payment_date || addDays(inv.invoice_date, 90);
+        inv.payment_date = data.payment_date || addDays(inv.invoice_date, getAccountPeriod());
+        // 用户显式填写付款日期 = 手动；留空 = 回到账期自动派生
+        inv.payment_auto = !!data.payment_date;
       }
       writeDB(db);
       const suppliers = db.suppliers.filter((s) => s.userId === userId);
@@ -336,6 +343,25 @@ export const invoiceApi = {
       db.invoices = db.invoices.filter((i) => !(i.id === id && i.userId === userId));
       writeDB(db);
       return {};
+    }),
+
+  // 账期变更后，重新计算所有「自动派生」且未付款发票的付款日期
+  recomputePaymentDates: () =>
+    guard(() => {
+      const userId = getUserId();
+      const db = readDB();
+      const period = getAccountPeriod();
+      let updated = 0;
+      for (const inv of db.invoices) {
+        if (inv.userId !== userId) continue;
+        if (!inv.payment_auto) continue; // 手动设置的保留
+        if (inv.status === 'paid') continue; // 已付款不回溯
+        if (!inv.invoice_date) continue;
+        inv.payment_date = addDays(inv.invoice_date, period);
+        updated += 1;
+      }
+      if (updated > 0) writeDB(db);
+      return { updated };
     }),
 };
 
