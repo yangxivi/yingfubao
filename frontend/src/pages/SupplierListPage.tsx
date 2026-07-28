@@ -1,13 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Table, Button, Modal, Form, Input, Space, message, Popconfirm, Card,
-  Select, Statistic, Tag, Row, Col,
+  Select, Statistic, Tag, Row, Col, Checkbox,
 } from 'antd';
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined,
   TeamOutlined, UserOutlined, PhoneOutlined, EnvironmentOutlined,
   FilterOutlined,
 } from '@ant-design/icons';
+import type { ColumnsType } from 'antd/es/table';
+import type { TableRowSelection as AntTableRowSelection } from 'antd/es/table/interface';
 import { supplierApi } from '../api/client';
 
 export default function SupplierListPage() {
@@ -18,6 +20,10 @@ export default function SupplierListPage() {
   const [editingSupplier, setEditingSupplier] = useState<any>(null);
   const [form] = Form.useForm();
 
+  // 多选
+  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const [batchDeleting, setBatchDeleting] = useState(false);
+
   // 高级筛选
   const [hasContactFilter, setHasContactFilter] = useState<string>('');
 
@@ -26,7 +32,6 @@ export default function SupplierListPage() {
     try {
       const res = await supplierApi.list({ search });
       let list = res.data;
-      // 客户端筛选：有/无联系人
       if (hasContactFilter === 'yes') list = list.filter((s: any) => s.contact_person);
       if (hasContactFilter === 'no') list = list.filter((s: any) => !s.contact_person);
       setSuppliers(list);
@@ -72,6 +77,22 @@ export default function SupplierListPage() {
     }
   };
 
+  // 批量删除
+  const handleBatchDelete = async () => {
+    if (selectedRowKeys.length === 0) return;
+    setBatchDeleting(true);
+    try {
+      await Promise.all(selectedRowKeys.map((id) => supplierApi.delete(id)));
+      message.success(`已删除 ${selectedRowKeys.length} 家供应商`);
+      setSelectedRowKeys([]);
+      fetchSuppliers();
+    } catch (err: any) {
+      message.error(err.response?.data?.detail || '批量删除失败');
+    } finally {
+      setBatchDeleting(false);
+    }
+  };
+
   const openCreate = () => {
     setEditingSupplier(null);
     form.resetFields();
@@ -85,19 +106,26 @@ export default function SupplierListPage() {
   };
 
   // 汇总统计
-  const summary = {
+  const summary = useMemo(() => ({
     total: suppliers.length,
     hasContact: suppliers.filter((s) => s.contact_person).length,
     noContact: suppliers.filter((s) => !s.contact_person).length,
-  };
+  }), [suppliers]);
 
-  const columns = [
+  // 多选汇总
+  const selectedSummary = useMemo(() => {
+    const selected = suppliers.filter((s) => selectedRowKeys.includes(s.id));
+    return { count: selected.length };
+  }, [suppliers, selectedRowKeys]);
+
+  const columns: ColumnsType<any> = [
     {
       title: '公司名称',
       dataIndex: 'name',
       key: 'name',
       width: 220,
       ellipsis: true,
+      sorter: (a, b) => (a.name || '').localeCompare(b.name || ''),
       render: (v: string) => (
         <span style={{ color: '#1677ff', fontWeight: 500 }}>
           <TeamOutlined style={{ marginRight: 6 }} />
@@ -111,6 +139,7 @@ export default function SupplierListPage() {
       key: 'tax_id',
       width: 190,
       ellipsis: true,
+      sorter: (a, b) => (a.tax_id || '').localeCompare(b.tax_id || ''),
     },
     {
       title: '地址',
@@ -147,12 +176,14 @@ export default function SupplierListPage() {
       dataIndex: 'created_at',
       key: 'time',
       width: 110,
+      sorter: (a, b) => (a.created_at || '').localeCompare(b.created_at || ''),
       render: (v: string) => v ? v.slice(0, 10) : '-',
     },
     {
       title: '操作',
       key: 'action',
       width: 120,
+      fixed: 'right' as const,
       render: (_: any, record: any) => (
         <Space size={2}>
           <Button type="text" size="small" icon={<EditOutlined />} onClick={() => openEdit(record)} />
@@ -163,6 +194,13 @@ export default function SupplierListPage() {
       ),
     },
   ];
+
+  // 行选择配置
+  const rowSelection: AntTableRowSelection<any> = {
+    selectedRowKeys,
+    onChange: (keys: React.Key[]) => setSelectedRowKeys(keys as number[]),
+    getCheckboxProps: () => ({ disabled: false }),
+  };
 
   return (
     <div>
@@ -201,10 +239,49 @@ export default function SupplierListPage() {
 
       {/* 表格 + 底部汇总 */}
       <Card bodyStyle={{ padding: 0 }}>
+        {/* 多选汇总栏 */}
+        {selectedRowKeys.length > 0 && (
+          <div style={{
+            background: '#e6f7ff',
+            borderBottom: '1px solid #91d5ff',
+            padding: '10px 20px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 32,
+          }}>
+            <Checkbox
+              checked={selectedRowKeys.length === suppliers.length && suppliers.length > 0}
+              indeterminate={selectedRowKeys.length > 0 && selectedRowKeys.length < suppliers.length}
+              onChange={(e) => {
+                if (e.target.checked) setSelectedRowKeys(suppliers.map((s) => s.id));
+                else setSelectedRowKeys([]);
+              }}
+            >
+              全选（{selectedRowKeys.length}/{suppliers.length}）
+            </Checkbox>
+            <Statistic title="选中数量" value={selectedSummary.count} suffix="家" style={{ fontSize: 14 }} />
+            <div style={{ marginLeft: 'auto' }}>
+              <Popconfirm
+                title={`确认删除选中的 ${selectedRowKeys.length} 家供应商？`}
+                description="删除后不可恢复"
+                onConfirm={handleBatchDelete}
+                okText="确认删除"
+                cancelText="取消"
+                okButtonProps={{ danger: true }}
+              >
+                <Button danger icon={<DeleteOutlined />} loading={batchDeleting}>
+                  批量删除（{selectedRowKeys.length}）
+                </Button>
+              </Popconfirm>
+            </div>
+          </div>
+        )}
+
         <Table
           dataSource={suppliers}
           columns={columns}
           rowKey="id"
+          rowSelection={rowSelection}
           loading={loading}
           size="middle"
           pagination={{ showTotal: (total) => `共 ${total} 家` }}
