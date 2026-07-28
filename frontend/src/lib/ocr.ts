@@ -340,60 +340,94 @@ function parseStructured(full: string, lines: string[]): OcrResult {
     [buyer_name, seller_name] = [seller_name, buyer_name];
   }
 
-  // ---- 6. 税号（基于锚点行索引精确定位区域）----
+  // ---- 6. 税号（基于公司名称文本距离匹配）----
   // 增值税发票上"销售方"和"购买方"是左右并排的，OCR 行序会交叉。
-  // 因此不能用"往前看N行找销售方/购买方关键词"的方式判断区域（旧逻辑的 contextBefore），
-  // 必须用锚点行索引 + 税号所在行的位置来判定归属。
+  // 行索引区域划分不可靠（两栏内容可能合并到同一行或交替出现）。
+  // 可靠方案：用已提取的 seller_name / buyer_name 作为强锚点，
+  // 对每个税号计算其在原始文本中离哪个名称更近（字符距离），就近归属。
   let seller_tax_id = '';
   let buyer_tax_id = '';
 
-  const sellerIdx = findLineIndex(lines, '销售方');
-  const buyerIdx = findLineIndex(lines, '购买方');
-
-  // 收集所有税号及其行索引
-  const allTaxIds: { id: string; lineIdx: number }[] = [];
+  // 收集所有税号及其在原始文本中的位置
+  const allTaxIds: { id: string; pos: number; lineIdx: number }[] = [];
   for (let i = 0; i < lines.length; i++) {
     const tid = parseTaxId(lines[i]);
-    if (tid) allTaxIds.push({ id: tid.toUpperCase(), lineIdx: i });
+    if (tid) {
+      const pos = full.indexOf(tid); // 在原始文本中的首次位置
+      allTaxIds.push({ id: tid.toUpperCase(), pos, lineIdx: i });
+    }
   }
 
-  if (sellerIdx >= 0 && buyerIdx >= 0 && allTaxIds.length > 0) {
-    // 根据两个锚点的先后顺序确定区域边界
-    const [firstAnchor, secondAnchor] = sellerIdx < buyerIdx
-      ? ['seller' as const, 'buyer' as const]
-      : ['buyer' as const, 'seller' as const];
-    const firstIdx = Math.min(sellerIdx, buyerIdx);
-    const secondIdx = Math.max(sellerIdx, buyerIdx);
+  if (seller_name && buyer_name && allTaxIds.length > 0) {
+    // 找两个名称在原始文本中的位置
+    const sellerNamePos = full.indexOf(seller_name);
+    const buyerNamePos = full.indexOf(buyer_name);
 
-    for (const t of allTaxIds) {
-      // 在两个锚点之间的税号 → 属于先出现的那个区域（通常是销售方）
-      if (t.lineIdx > firstIdx && t.lineIdx < secondIdx) {
-        if (firstAnchor === 'seller' && !seller_tax_id) seller_tax_id = t.id;
-        else if (firstAnchor === 'buyer' && !buyer_tax_id) buyer_tax_id = t.id;
+    if (sellerNamePos >= 0 && buyerNamePos >= 0) {
+      // 对每个税号，计算到两个名称的距离，就近归属
+      const assigned: number[] = []; // 已分配的税号索引
+
+      for (let ti = 0; ti < allTaxIds.length; ti++) {
+        const t = allTaxIds[ti];
+        if (t.pos < 0) continue;
+
+        const distToSeller = Math.abs(t.pos - sellerNamePos);
+        const distToBuyer = Math.abs(t.pos - buyerNamePos);
+
+        if (distToSeller < distToBuyer && !seller_tax_id) {
+          seller_tax_id = t.id;
+          assigned.push(ti);
+        } else if (distToBuyer < distToSeller && !buyer_tax_id) {
+          buyer_tax_id = t.id;
+          assigned.push(ti);
+        }
       }
-      // 在第二个锚点之后的税号 → 属于后出现的区域
-      else if (t.lineIdx > secondIdx) {
-        if (secondAnchor === 'seller' && !seller_tax_id) seller_tax_id = t.id;
-        else if (secondAnchor === 'buyer' && !buyer_tax_id) buyer_tax_id = t.id;
+
+      // 如果还有未分配的税号（距离相等或极端情况），用行索引辅助
+      for (let ti = 0; ti < allTaxIds.length; ti++) {
+        if (assigned.includes(ti)) continue;
+        const t = allTaxIds[ti];
+        if (!seller_tax_id) { seller_tax_id = t.id; }
+        else if (!buyer_tax_id) { buyer_tax_id = t.id; }
       }
     }
   }
 
-  // 兜底：如果上述位置匹配没找到，尝试在各自区域内全文搜索
-  if (!seller_tax_id && sellerIdx >= 0) {
-    const blockEnd = buyerIdx > sellerIdx ? buyerIdx : lines.length;
-    const block = extractBlock(lines, sellerIdx + 1, blockEnd);
-    const stid = parseTaxId(block);
-    if (stid) seller_tax_id = stid;
-  }
-  if (!buyer_tax_id && buyerIdx >= 0) {
-    const blockStart = sellerIdx >= 0 && sellerIdx < buyerIdx ? buyerIdx : 0;
-    const block = extractBlock(lines, blockStart);
-    const btid = parseTaxId(block);
-    if (btid) buyer_tax_id = btid;
+  // 兜底1：如果名称距离匹配没找到（比如某个名称为空），回退到行索引区域
+  if ((!seller_tax_id || !buyer_tax_id) && allTaxIds.length > 0) {
+    const sellerIdx = findLineIndex(lines, '销售方');
+    const buyerIdx = findLineIndex(lines, '购买方');
+
+    if (sellerIdx >= 0 && buyerIdx >= 0) {
+      const firstIdx = Math.min(sellerIdx, buyerIdx);
+      const secondIdx = Math.max(sellerIdx, buyerIdx);
+      const firstIsSeller = sellerIdx < buyerIdx;
+
+      for (const t of allTaxIds) {
+        if (t.lineIdx > firstIdx && t.lineIdx < secondIdx) {
+          if (firstIsSeller && !seller_tax_id) seller_tax_id = t.id;
+          else if (!firstIsSeller && !buyer_tax_id) buyer_tax_id = t.id;
+        } else if (t.lineIdx > secondIdx) {
+          if (!firstIsSeller && !seller_tax_id) seller_tax_id = t.id;
+          else if (firstIsSeller && !buyer_tax_id) buyer_tax_id = t.id;
+        }
+      }
+    }
+
+    // 兜底2：区域内全文搜索
+    if (!seller_tax_id && sellerIdx >= 0) {
+      const blockEnd = buyerIdx > sellerIdx ? buyerIdx : lines.length;
+      const stid = parseTaxId(extractBlock(lines, sellerIdx + 1, blockEnd));
+      if (stid) seller_tax_id = stid;
+    }
+    if (!buyer_tax_id && buyerIdx >= 0) {
+      const blockStart = sellerIdx >= 0 && sellerIdx < buyerIdx ? buyerIdx : 0;
+      const btid = parseTaxId(extractBlock(lines, blockStart));
+      if (btid) buyer_tax_id = btid;
+    }
   }
 
-  // 最终兜底：全局所有税号按出现顺序分配（第一个给购买方，第二个给销售方）
+  // 最终兜底：全局所有税号按出现顺序分配
   if (!seller_tax_id || !buyer_tax_id) {
     const uniqGlobal = Array.from(new Set(allTaxIds.map((t) => t.id)));
     if (!buyer_tax_id && uniqGlobal[0]) buyer_tax_id = uniqGlobal[0];
