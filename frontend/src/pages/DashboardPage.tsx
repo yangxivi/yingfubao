@@ -84,7 +84,25 @@ export default function DashboardPage() {
   const overdueCount = data.overdue_count;
   const pendingCount = data.pending_count - overdueCount;
 
-  // Tab 筛选发票
+  // 按天数范围过滤发票（与 Tab 一一对应）
+  const countByTab = (tabKey: TabKey): number => {
+    if (!reminders?.invoices) return 0;
+    const today = dayjs();
+    return reminders.invoices.filter((inv: any) => {
+      if (!inv.payment_date) return false;
+      const daysLeft = dayjs(inv.payment_date).diff(today, 'day');
+      switch (tabKey) {
+        case 'overdue': return daysLeft < 0;
+        case '15': return daysLeft >= 0 && daysLeft <= 15;
+        case '30': return daysLeft > 15 && daysLeft <= 30;
+        case '60': return daysLeft > 30 && daysLeft <= 60;
+        case '90': return daysLeft > 60 && daysLeft <= 90;
+        default: return false;
+      }
+    }).length;
+  };
+
+  // Tab 筛选发票（复用相同逻辑）
   const getFilteredInvoices = () => {
     if (!reminders?.invoices) return [];
     const today = dayjs();
@@ -104,13 +122,13 @@ export default function DashboardPage() {
 
   const filteredInvoices = getFilteredInvoices();
 
-  // Tab 配置
+  // Tab 配置（计数从同一份列表实时计算，保证数字与下方列表一致）
   const tabs: { key: TabKey; label: string; count: number; danger?: boolean }[] = [
-    { key: 'overdue', label: '已逾期', count: reminders?.overdue || 0, danger: true },
-    { key: '15', label: '15天内', count: reminders?.due_within_15 || 0 },
-    { key: '30', label: '30天内', count: reminders?.due_within_30 || 0 },
-    { key: '60', label: '60天内', count: reminders?.due_within_60 || 0 },
-    { key: '90', label: '90天内', count: reminders?.due_within_90 || 0 },
+    { key: 'overdue', label: '已逾期', count: countByTab('overdue'), danger: true },
+    { key: '15', label: '15天内', count: countByTab('15') },
+    { key: '30', label: '30天内', count: countByTab('30') },
+    { key: '60', label: '60天内', count: countByTab('60') },
+    { key: '90', label: '90天内', count: countByTab('90') },
   ];
 
   const getStatusTag = (paymentDate: string) => {
