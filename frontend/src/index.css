@@ -506,7 +506,7 @@ body {
 .cockpit-card {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  min-height: 320px;
 }
 
 .cockpit-card .ant-card-body {
