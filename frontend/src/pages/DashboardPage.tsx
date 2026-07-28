@@ -269,7 +269,7 @@ export default function DashboardPage() {
 
             {/* 第三行：到期分布 + 月度完成率 */}
             <Col xs={24} lg={12}>
-              <Card title="待付款到期票追度" className="cockpit-card">
+              <Card title="待付款到期分布" className="cockpit-card">
                 <PaymentDueDist data={analytics.paymentDueDist} />
               </Card>
             </Col>
@@ -595,7 +595,7 @@ function AgingBars({ data }: { data: any[] }) {
   );
 }
 
-// ===== 待付款到期票追度（按剩余天数分桶的面积图） =====
+// ===== 待付款到期分布（按剩余天数分桶的面积图） =====
 function PaymentDueDist({ data }: { data: any[] }) {
   const W = 560, H = 220;
   const padX = 50, padY = 30, padB = 40;
