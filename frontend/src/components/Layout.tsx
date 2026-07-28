@@ -13,8 +13,10 @@ import {
   ImportOutlined,
   SettingOutlined,
 } from '@ant-design/icons';
-import { getCurrentUserId, clearSession } from '../lib/auth';
+import { getCurrentUserId, clearSession, getAuthMode } from '../lib/auth';
 import { exportUserBackup, importUserBackup, isBackupFile } from '../lib/db';
+import { getCloudStatus } from '../lib/cloudStatus';
+import SetupWizard from './SetupWizard';
 
 const navItems = [
   { key: '/', icon: <DashboardOutlined />, label: '仪表盘' },
@@ -30,6 +32,9 @@ export default function Layout() {
   const location = useLocation();
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showWizard, setShowWizard] = useState(false);
+  const cloudStatus = getCloudStatus();
+  const isLocal = getAuthMode() === 'local' || cloudStatus === 'uninitialized';
 
   // 当前激活的 nav key
   const activeKey = (() => {
@@ -139,6 +144,27 @@ export default function Layout() {
         </nav>
 
         <div className="yb-navbar-right">
+          {/* 云端同步状态标识 */}
+          <span
+            onClick={() => isLocal && setShowWizard(true)}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              fontSize: 12,
+              padding: '2px 10px',
+              borderRadius: 12,
+              cursor: isLocal ? 'pointer' : 'default',
+              background: isLocal ? '#fff7e6' : '#f6ffed',
+              color: isLocal ? '#fa8c16' : '#52c41a',
+              border: `1px solid ${isLocal ? '#ffd591' : '#b7eb8f'}`,
+              userSelect: 'none',
+            }}
+            title={isLocal ? '点击开启云端同步' : '云端同步已开启'}
+          >
+            {isLocal ? '💾 本地模式' : '☁️ 云端同步'}
+          </span>
+
           <Button type="text" size="small" icon={<DownloadOutlined />} onClick={handleExport}>
             导出备份
           </Button>
@@ -165,6 +191,13 @@ export default function Layout() {
       <main style={{ padding: '24px 32px', maxWidth: '1400px', margin: '0 auto' }}>
         <Outlet />
       </main>
+
+      {/* 云���同步设置向导 */}
+      <SetupWizard
+        open={showWizard}
+        onClose={() => setShowWizard(false)}
+        onSuccess={() => window.location.reload()}
+      />
     </div>
   );
 }

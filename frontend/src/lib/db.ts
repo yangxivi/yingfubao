@@ -1,12 +1,12 @@
-// 云端数据层：以 Supabase 为云端主存储，本地维护「当前用户」的内存镜像缓存。
-// 对外接口 readDB / writeDB / nextId 签名保持与原 localStorage 版一致，
-// 因此 api/client.ts 的全部业务逻辑（去重、派生状态、关联供应商等）无需改动。
+// 云端数据层（主）+ 本地降级（备）
+//   - 云端模式：以 Supabase 为云端主存储，本地维护内存镜像缓存。
+//   - 本地模式：Supabase 未初始化时，数据存于 localStorage（单浏览器可用）。
 //
-// 数据隔离：应用层按 user_id 过滤（与原来按 userId 过滤的语义一致）。
-// 同步策略：writeDB 同步更新内存缓存，并触发后台串行的 upsert 同步到云端，
-//           下一次 readDB 立即读到最新内存数据，云端最终一致。
+// 对外接口 readDB / writeDB / nextId 签名保持一致，
+// api/client.ts 的全部业务逻辑无需改动。
 
 import { supabase } from './supabase';
+import { getAuthMode } from './auth';
 
 export interface User {
   id: string;
@@ -66,11 +66,15 @@ export interface DBShape {
 
 // 旧版 localStorage 的 key（迁移后清除）
 const LOCAL_KEY = 'yingfubao_db_v1';
+// 本地模式的数据 key（按 userId 隔离）
+const LOCAL_DB_KEY_PREFIX = 'yingfubao_local_db_';
 
 // ===== 内存缓存（当前用户视角）=====
 let cache: DBShape | null = null;
 let cacheUserId: string | null = null;
 let syncChain: Promise<void> = Promise.resolve();
+// 是否处于本地模式
+let isLocalMode = false;
 
 function emptyDB(): DBShape {
   return { users: [], suppliers: [], invoices: [], seq: { users: 1, suppliers: 1, invoices: 1 } };
@@ -82,7 +86,14 @@ export function readDB(): DBShape {
 
 export function writeDB(db: DBShape): void {
   cache = db;
-  syncToCloud();
+  if (isLocalMode && cacheUserId) {
+    // 本地模式：同时持久化到 localStorage
+    try {
+      localStorage.setItem(LOCAL_DB_KEY_PREFIX + cacheUserId, JSON.stringify(db));
+    } catch { /* ignore */ }
+  } else {
+    syncToCloud();
+  }
 }
 
 // 全局唯一 id（uuid），避免多设备 / 多浏览器并发创建时 id 冲突
@@ -179,7 +190,7 @@ function rowToInvoice(r: any): Invoice {
 
 // ===== 云端同步（串行化，避免并发覆盖）=====
 function syncToCloud() {
-  if (!cache || !cacheUserId) return;
+  if (!cache || !cacheUserId || isLocalMode) return; // 本地模式不同步云端
   const data = cache;
   const userId = cacheUserId;
   syncChain = syncChain.then(async () => {
@@ -210,16 +221,55 @@ async function loadCloud(userId: string): Promise<DBShape> {
   return { users: [], suppliers, invoices, seq: { users: 1, suppliers: 1, invoices: 1 } };
 }
 
-// ===== 初始化：加载云端 + 迁移本地旧数据 =====
+// ===== 初始化：加载云端 + 迁移本地旧数据（云端模式） / 加载 localStorage（本地模式）=====
 export async function initUserDB(userId: string): Promise<void> {
   cacheUserId = userId;
-  cache = await loadCloud(userId);
-  await migrateLocalIfNeeded(userId);
+  isLocalMode = getAuthMode() === 'local';
+
+  if (isLocalMode) {
+    // 本地模式：从 localStorage 加载
+    cache = loadLocal(userId);
+    await migrateLocalIfNeeded(userId);
+  } else {
+    // 云端模式
+    cache = await loadCloud(userId);
+    await migrateLocalIfNeeded(userId);
+  }
+}
+
+/** 本地模式：从 localStorage 加载用户数据 */
+function loadLocal(userId: string): DBShape {
+  try {
+    const raw = localStorage.getItem(LOCAL_DB_KEY_PREFIX + userId);
+    if (raw) return JSON.parse(raw);
+  } catch { /* ignore */ }
+  // 尝试从旧版 key 迁移
+  try {
+    const raw = localStorage.getItem(LOCAL_KEY);
+    if (raw) {
+      const old: any = JSON.parse(raw);
+      const suppliers = (old.suppliers || []).filter((s: any) => String(s.userId) === String(userId));
+      const invoices = (old.invoices || []).filter((i: any) => String(i.userId) === String(userId));
+      return { users: [], suppliers, invoices, seq: { users: 1, suppliers: 1, invoices: 1 } };
+    }
+  } catch { /* ignore */ }
+  return emptyDB();
+}
+
+/** 供 auth.ts 调用：用旧数据直接初始化缓存（无需 async） */
+export function initLocalCache(suppliers: any[], invoices: any[]): void {
+  cache = {
+    users: [],
+    suppliers: suppliers || [],
+    invoices: invoices || [],
+    seq: { users: 1, suppliers: 1, invoices: 1 },
+  };
 }
 
 export function clearUserCache(): void {
   cache = null;
   cacheUserId = null;
+  isLocalMode = false;
   syncChain = Promise.resolve();
 }
 
@@ -241,6 +291,16 @@ async function migrateLocalIfNeeded(userId: string): Promise<void> {
   const oldSuppliers = (old.suppliers || []).filter((s: any) => String(s.userId) === String(userId));
   const oldInvoices = (old.invoices || []).filter((i: any) => String(i.userId) === String(userId));
   if (!oldSuppliers.length && !oldInvoices.length) {
+    try {
+      localStorage.removeItem(LOCAL_KEY);
+    } catch {
+      /* ignore */
+    }
+    return;
+  }
+
+  // 本地模式：不写云端，仅清除旧库避免重复迁移
+  if (isLocalMode) {
     try {
       localStorage.removeItem(LOCAL_KEY);
     } catch {
@@ -288,7 +348,9 @@ async function migrateLocalIfNeeded(userId: string): Promise<void> {
   if (newInv.length) await supabase.from('invoices').upsert(newInv.map(invoiceToRow));
 
   // 重新加载缓存，并清除本地旧库，避免下次重复迁移
-  cache = await loadCloud(userId);
+  if (!isLocalMode) {
+    cache = await loadCloud(userId);
+  }
   try {
     localStorage.removeItem(LOCAL_KEY);
   } catch {

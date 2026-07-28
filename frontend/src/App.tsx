@@ -8,9 +8,10 @@ import InvoiceListPage from './pages/InvoiceListPage';
 import SupplierListPage from './pages/SupplierListPage';
 import RemindersPage from './pages/RemindersPage';
 import UploadPage from './pages/UploadPage';
-import { getCurrentUserId } from './lib/auth';
+import { getCurrentUserId, detectAndLockAuthMode, syncCurrentUserToCloud } from './lib/auth';
 import { initUserDB } from './lib/db';
 import { initAccountPeriodFromSession } from './lib/accountPeriod';
+import { setCloudStatus } from './lib/cloudStatus';
 import SettingsPage from './pages/SettingsPage';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -22,18 +23,37 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 export default function App() {
   const [ready, setReady] = useState(false);
 
-  // 刷新/重进时：已登录则预热云端缓存，确保页面读取到最新数据
+  // 刷新/重进时：探测云端状态 → 预热数据
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    const userId = getCurrentUserId();
-    initAccountPeriodFromSession(); // 从会话恢复账期设置
-    if (!token || !userId) {
-      setReady(true);
-      return;
-    }
-    initUserDB(userId)
-      .catch((e) => console.warn('初始化云端数据失败', e))
-      .finally(() => setReady(true));
+    const init = async () => {
+      // 1. 探测 Supabase 状态并锁定鉴权模式
+      const status = await detectAndLockAuthMode();
+      setCloudStatus(status);
+      setReady(true); // 触发一次重渲染
+
+      // 2. 恢复账期设置
+      initAccountPeriodFromSession();
+
+      // 3. 已登录则预热数据缓存
+      const token = localStorage.getItem('token');
+      const userId = getCurrentUserId();
+      if (token && userId) {
+        // 云端就绪时，先把本地账号同步到云端 users 表，否则发票外键会失败
+        if (status === 'ready') {
+          try {
+            await syncCurrentUserToCloud();
+          } catch (e) {
+            console.warn('同步账号到云端失败', e);
+          }
+        }
+        try {
+          await initUserDB(userId);
+        } catch (e) {
+          console.warn('初始化数据失败', e);
+        }
+      }
+    };
+    init();
   }, []);
 
   if (!ready) {
