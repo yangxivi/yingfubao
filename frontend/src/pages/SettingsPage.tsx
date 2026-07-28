@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import { Card, InputNumber, Button, message, Alert, Space, Typography, Divider } from 'antd';
+import { Card, InputNumber, Button, message, Alert, Space, Typography, Divider, Tag } from 'antd';
 import { authApi, invoiceApi } from '../api/client';
 import { getAccountPeriod } from '../lib/accountPeriod';
 
 const { Title, Paragraph, Text } = Typography;
+
+const QUICK_PERIODS = [30, 60, 90, 120, 180];
 
 export default function SettingsPage() {
   const [period, setPeriod] = useState<number>(getAccountPeriod());
@@ -56,6 +58,23 @@ export default function SettingsPage() {
             addonAfter="天"
             style={{ width: 160 }}
           />
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 8 }}>快速选择</Text>
+          <Space wrap>
+            {QUICK_PERIODS.map((d) => (
+              <Button
+                key={d}
+                size="middle"
+                type={period === d ? 'primary' : 'default'}
+                onClick={() => setPeriod(d)}
+                style={{ minWidth: 64 }}
+              >
+                {d} 天
+              </Button>
+            ))}
+          </Space>
         </div>
 
         <Alert
