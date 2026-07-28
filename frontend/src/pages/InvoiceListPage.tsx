@@ -253,7 +253,8 @@ export default function InvoiceListPage() {
       render: (_: any, record: any) => {
         const dl = daysLeft(record.payment_date);
         if (dl === null) return '-';
-        if (dl < 0) return <span style={{ color: '#cf1322', fontWeight: 600 }}>{Math.abs(dl)}天</span>;
+        // 负数=已逾期天数，正数=距离付款日剩余天数
+        if (dl < 0) return <span style={{ color: '#cf1322', fontWeight: 600 }}>{dl}天</span>;
         if (dl <= 7) return <span style={{ color: '#fa8c16', fontWeight: 600 }}>{dl}天</span>;
         return <span>{dl}天</span>;
       },
@@ -483,8 +484,8 @@ export default function InvoiceListPage() {
             >
               全选（{selectedRowKeys.length}/{invoices.length}）
             </Checkbox>
-            <Statistic title="选中数量" value={selectedSummary.count} suffix="条" style={{ fontSize: 14 }} />
-            <Statistic title="合计金额" value={selectedSummary.totalAmount} prefix="¥" precision={2} style={{ fontSize: 14 }} valueStyle={{ color: '#cf1322', fontWeight: 600 }} />
+            <Statistic title="选中数量" value={selectedSummary.count} suffix="条" style={{ fontSize: 14 }} valueStyle={{ fontSize: 16, fontWeight: 600 }} />
+            <Statistic title="合计金额" value={selectedSummary.totalAmount} prefix="¥" precision={2} style={{ fontSize: 14 }} valueStyle={{ color: '#cf1322', fontWeight: 600, fontSize: 16 }} />
             <div style={{ marginLeft: 'auto' }}>
               <Popconfirm
                 title={`确认删除选中的 ${selectedRowKeys.length} 条发票？`}

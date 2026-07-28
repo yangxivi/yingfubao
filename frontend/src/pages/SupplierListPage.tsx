@@ -259,7 +259,7 @@ export default function SupplierListPage() {
             >
               全选（{selectedRowKeys.length}/{suppliers.length}）
             </Checkbox>
-            <Statistic title="选中数量" value={selectedSummary.count} suffix="家" style={{ fontSize: 14 }} />
+            <Statistic title="选中数量" value={selectedSummary.count} suffix="家" style={{ fontSize: 14 }} valueStyle={{ fontSize: 16, fontWeight: 600 }} />
             <div style={{ marginLeft: 'auto' }}>
               <Popconfirm
                 title={`确认删除选中的 ${selectedRowKeys.length} 家供应商？`}
