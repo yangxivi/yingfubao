@@ -139,6 +139,25 @@ function ensureSupplier(userId: number, name?: string, taxId?: string): number |
   return id;
 }
 
+// 按 发票号 + 销售方 + 金额 判定是否为同一张发票（去重用）
+function findDuplicateInvoice(
+  userId: number,
+  inv: { invoice_no?: string; seller_name?: string; total_amount?: number },
+): Invoice | null {
+  const no = (inv.invoice_no || '').trim();
+  if (!no) return null; // 无发票号无法可靠判定，跳过去重
+  const db = readDB();
+  return (
+    db.invoices.find(
+      (i) =>
+        i.userId === userId &&
+        (i.invoice_no || '').trim() === no &&
+        (i.seller_name || '').trim() === (inv.seller_name || '').trim() &&
+        Math.abs((i.total_amount || 0) - (Number(inv.total_amount) || 0)) < 0.01,
+    ) || null
+  );
+}
+
 // ------- Auth -------
 export const authApi = {
   register: (data: { username: string; password: string; company_name?: string; email?: string }) =>
@@ -190,6 +209,16 @@ export const invoiceApi = {
       if (!supplierId && data.supplier_name) {
         supplierId = ensureSupplier(userId, data.supplier_name, data.supplier_tax_id);
       }
+      // 去重：已存在相同发票号+销售方+金额的发票则直接复用
+      const dup = findDuplicateInvoice(userId, {
+        invoice_no: data.invoice_no,
+        seller_name: data.seller_name || data.supplier_name,
+        total_amount: data.total_amount,
+      });
+      if (dup) {
+        const suppliers = db.suppliers.filter((s) => s.userId === userId);
+        return decorate(dup, suppliers);
+      }
       const id = nextId(db, 'invoices');
       const payment_date = data.payment_date || addDays(data.invoice_date, 90);
       const inv: Invoice = {
@@ -225,6 +254,17 @@ export const invoiceApi = {
     guard(async () => {
       const userId = getUserId();
       const result = await recognizeInvoice(file, onProgress);
+      // 去重：已存在相同发票号+销售方+金额的发票则直接复用，避免重复录入
+      const dup = findDuplicateInvoice(userId, {
+        invoice_no: result.invoice_no,
+        seller_name: result.seller_name,
+        total_amount: result.total_amount,
+      });
+      if (dup) {
+        const db = readDB();
+        const suppliers = db.suppliers.filter((s) => s.userId === userId);
+        return decorate(dup, suppliers);
+      }
       const supplierId = ensureSupplier(userId, result.seller_name, result.seller_tax_id);
       // 将图片转为压缩后的 base64 存储（避免 localStorage 超限）
       let imageData = '';
@@ -328,6 +368,17 @@ export const supplierApi = {
     guard(() => {
       const userId = getUserId();
       const db = readDB();
+      const nm = (data.name || '').trim();
+      // 去重：同名供应商已存在则复用并补全字段，避免重复创建
+      const existing = db.suppliers.find((s) => s.userId === userId && s.name.trim() === nm);
+      if (existing) {
+        if (data.tax_id && !existing.tax_id) existing.tax_id = data.tax_id;
+        if (data.contact_person && !existing.contact_person) existing.contact_person = data.contact_person;
+        if (data.phone && !existing.phone) existing.phone = data.phone;
+        if (data.address && !existing.address) existing.address = data.address;
+        writeDB(db);
+        return existing;
+      }
       const id = nextId(db, 'suppliers');
       const sup: Supplier = {
         id,
@@ -367,8 +418,11 @@ export const supplierApi = {
     guard(() => {
       const userId = getUserId();
       const db = readDB();
+      // 仅删除供应商；关联发票保留在发票列表中，仅将 supplier_id 置空（避免发票凭空消失）
+      db.invoices = db.invoices.map((i) =>
+        (i.userId === userId && i.supplier_id === id) ? { ...i, supplier_id: null } : i,
+      );
       db.suppliers = db.suppliers.filter((s) => !(s.id === id && s.userId === userId));
-      db.invoices = db.invoices.filter((i) => !(i.supplier_id === id && i.userId === userId));
       writeDB(db);
       return {};
     }),
