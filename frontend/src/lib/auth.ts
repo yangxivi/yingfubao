@@ -172,16 +172,12 @@ export function getCurrentUser(): ReturnType<typeof publicUser> | null {
   }
 }
 
-/** 更新当前用户的账期天数，并同步本地会话 */
+/** 更新当前用户的账期天数，并同步本地会话；云端同步尽力而为 */
 export async function updateAccountPeriod(period: number): Promise<void> {
   const id = getCurrentUserId();
   if (!id) throw new Error('未登录');
-  const { error } = await supabase
-    .from('users')
-    .update({ account_period: period })
-    .eq('id', id);
-  if (error) throw new Error(error.message || '更新失败');
-  // 更新本地会话
+
+  // 1. 先更新本地会话（始终生效）
   const raw = localStorage.getItem(USER_KEY);
   if (raw) {
     try {
@@ -193,4 +189,15 @@ export async function updateAccountPeriod(period: number): Promise<void> {
     }
   }
   setAccountPeriod(period);
+
+  // 2. 尝试同步到云端（表不存在时静默降级，不阻塞主流程）
+  try {
+    const { error } = await supabase
+      .from('users')
+      .update({ account_period: period })
+      .eq('id', id);
+    if (error) console.warn('账期云端同步跳过（表可能尚未创建）:', error.message);
+  } catch (e: any) {
+    console.warn('账期云端同步跳过:', e?.message || e);
+  }
 }
