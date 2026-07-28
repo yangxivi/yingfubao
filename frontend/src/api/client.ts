@@ -23,13 +23,38 @@ async function guard<T>(fn: () => T | Promise<T>): Promise<{ data: T }> {
   }
 }
 
-/** 将 File 转为 base64（用于 localStorage 存储） */
-function fileToBase64(file: File): Promise<string> {
+/** 将 File 转为压缩后的 base64（用于 localStorage 存储）
+ *  缩放到 maxWidth=1200px，JPEG 质量 0.8，避免 localStorage 爆容量 */
+function fileToBase64(file: File, options?: { maxWidth?: number; quality?: number }): Promise<string> {
+  const { maxWidth = 1200, quality = 0.8 } = options || {};
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(new Error('图片读取失败'));
-    reader.readAsDataURL(file);
+    // 对图片类型做压缩；PDF 等非图片直接转 base64
+    if (!file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error('文件读取失败'));
+      reader.readAsDataURL(file);
+      return;
+    }
+    const img = new window.Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let { width, height } = img;
+      if (width > maxWidth) {
+        height = Math.round(height * maxWidth / width);
+        width = maxWidth;
+      }
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { reject(new Error('Canvas 不可用')); return; }
+      ctx.drawImage(img, 0, 0, width, height);
+      // 用 JPEG 压缩（即使原图是 PNG 也转 JPEG 以大幅减小体积）
+      const result = canvas.toDataURL('image/jpeg', quality);
+      resolve(result);
+    };
+    img.onerror = () => reject(new Error('图片加载失败'));
+    img.src = URL.createObjectURL(file);
   });
 }
 function getUserId(): number {
@@ -201,9 +226,9 @@ export const invoiceApi = {
       const userId = getUserId();
       const result = await recognizeInvoice(file, onProgress);
       const supplierId = ensureSupplier(userId, result.seller_name, result.seller_tax_id);
-      // 将图片转为 base64 存储（限制 2MB 以避免 localStorage 超限）
+      // 将图片转为压缩后的 base64 存储（避免 localStorage 超限）
       let imageData = '';
-      try { imageData = await fileToBase64(file); } catch (_) { /* 图片可选 */ }
+      try { imageData = await fileToBase64(file, { maxWidth: 1200, quality: 0.75 }); } catch (_) { /* 图片可选 */ }
       const db = readDB();
       const id = nextId(db, 'invoices');
       const inv: Invoice = {

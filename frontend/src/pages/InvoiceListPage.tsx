@@ -143,17 +143,39 @@ export default function InvoiceListPage() {
     } catch (err) { /* handled */ }
   };
 
-  // 详情页上传/更换发票图片
+  // 详情页上传/更换发票图片（压缩后存储）
   const handleDetailImageUpload: any = async (options: any) => {
     if (!selectedInvoice) return;
     try {
       setDetailUploading(true);
-      const reader = new FileReader();
-      const base64 = await new Promise<string>((resolve, reject) => {
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = () => reject(new Error('读取失败'));
-        reader.readAsDataURL(options.file);
-      });
+      // 压缩图片：缩放到 1200px 宽 + JPEG 0.75 质量
+      const file = options.file;
+      let base64: string;
+      if (file.type.startsWith('image/')) {
+        base64 = await new Promise<string>((resolve, reject) => {
+          const img = new window.Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            let { width, height } = img;
+            const MAX_W = 1200;
+            if (width > MAX_W) { height = Math.round(height * MAX_W / width); width = MAX_W; }
+            canvas.width = width; canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) { reject(new Error('Canvas 不可用')); return; }
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', 0.75));
+          };
+          img.onerror = () => reject(new Error('图片加载失败'));
+          img.src = URL.createObjectURL(file);
+        });
+      } else {
+        base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = () => reject(new Error('文件读取失败'));
+          reader.readAsDataURL(file);
+        });
+      }
       await invoiceApi.update(selectedInvoice.id, { image_data: base64 });
       selectedInvoice.image_data = base64;
       options.onSuccess?.({});

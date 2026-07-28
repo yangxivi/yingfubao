@@ -77,7 +77,13 @@ export function writeDB(db: DBShape): void {
     localStorage.setItem(KEY, JSON.stringify(db));
   } catch (e) {
     console.warn('写入本地数据库失败', e);
-    throw new Error('本地存储空间不足或不可用');
+    // 计算图片数据占用大小，给出具体建议
+    const totalImgSize = db.invoices.reduce((sum, inv) => sum + (inv.image_data?.length || 0), 0);
+    const totalSize = new Blob([JSON.stringify(db)]).size;
+    throw new Error(
+      `本地存储空间不足（当前约 ${(totalSize / 1024 / 1024).toFixed(1)}MB，其中发票图片占 ${(totalImgSize / 1024 / 1024).toFixed(1)}MB）。` +
+      `建议：删除部分旧发票的图片（在发票详情页移除图片后保存），或导出备份数据后清除浏览器缓存。`
+    );
   }
 }
 
