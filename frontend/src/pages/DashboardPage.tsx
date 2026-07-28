@@ -328,7 +328,7 @@ export default function DashboardPage() {
                           marginLeft: 12,
                           color: daysLeft < 0 ? '#ff4d4f' : daysLeft <= 7 ? '#fa8c16' : '#999',
                         }}>
-                          剩余 {Math.abs(daysLeft)} 天
+                          {daysLeft < 0 ? '逾期' : '剩余'} {Math.abs(daysLeft)} 天
                         </span>
                       )}
                     </div>
