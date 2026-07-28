@@ -29,7 +29,7 @@ export default function InvoiceListPage() {
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
 
   // 多选
-  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
 
   // 高级筛选（可折叠）
   const [filterExpanded, setFilterExpanded] = useState(false);
@@ -81,7 +81,7 @@ export default function InvoiceListPage() {
     return Math.round((pd.getTime() - now.getTime()) / 86400000);
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     try {
       await invoiceApi.delete(id);
       message.success('已删除');
@@ -135,7 +135,7 @@ export default function InvoiceListPage() {
     }
   };
 
-  const handleMarkPaid = async (id: number) => {
+  const handleMarkPaid = async (id: string) => {
     try {
       await invoiceApi.update(id, { status: 'paid' });
       message.success('已标记为已付款');
@@ -320,7 +320,7 @@ export default function InvoiceListPage() {
   // 行选择配置
   const rowSelection: AntTableRowSelection<any> = {
     selectedRowKeys,
-    onChange: (keys: React.Key[]) => setSelectedRowKeys(keys as number[]),
+    onChange: (keys: React.Key[]) => setSelectedRowKeys(keys as string[]),
     getCheckboxProps: (record: any) => ({ disabled: false }),
   };
 

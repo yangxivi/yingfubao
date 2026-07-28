@@ -12,7 +12,7 @@ import {
   DownloadOutlined,
   ImportOutlined,
 } from '@ant-design/icons';
-import { getCurrentUserId } from '../lib/auth';
+import { getCurrentUserId, clearSession } from '../lib/auth';
 import { exportUserBackup, importUserBackup, isBackupFile } from '../lib/db';
 
 const navItems = [
@@ -41,8 +41,7 @@ export default function Layout() {
   })();
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    clearSession();
     navigate('/login');
   };
 

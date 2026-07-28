@@ -58,10 +58,10 @@ function fileToBase64(file: File, options?: { maxWidth?: number; quality?: numbe
     img.src = URL.createObjectURL(file);
   });
 }
-function getUserId(): number {
+function getUserId(): string {
   const id = authLib.getCurrentUserId();
   if (!id) fail('请先登录');
-  return id as number;
+  return id as string;
 }
 
 function addDays(dateStr: string, days: number): string {
@@ -95,7 +95,7 @@ function decorate(inv: Invoice, suppliers: Supplier[]): any {
 }
 
 // 按名称查找或创建供应商（支持模糊匹配），返回 id（name 为空返回 null）
-function ensureSupplier(userId: number, name?: string, taxId?: string): number | null {
+function ensureSupplier(userId: string, name?: string, taxId?: string): string | null {
   const nm = (name || '').trim();
   if (!nm) return null;
   const db = readDB();
@@ -142,7 +142,7 @@ function ensureSupplier(userId: number, name?: string, taxId?: string): number |
 
 // 按 发票号 + 销售方 + 金额 判定是否为同一张发票（去重用）
 function findDuplicateInvoice(
-  userId: number,
+  userId: string,
   inv: { invoice_no?: string; seller_name?: string; total_amount?: number },
 ): Invoice | null {
   const no = (inv.invoice_no || '').trim();
@@ -191,7 +191,7 @@ export const invoiceApi = {
       return list;
     }),
 
-  get: (id: number) =>
+  get: (id: string) =>
     guard(() => {
       const userId = getUserId();
       const db = readDB();
@@ -206,7 +206,7 @@ export const invoiceApi = {
       const userId = getUserId();
       const db = readDB();
       // 处理供应商
-      let supplierId: number | null = data.supplier_id ?? null;
+      let supplierId: string | null = data.supplier_id ?? null;
       if (!supplierId && data.supplier_name) {
         supplierId = ensureSupplier(userId, data.supplier_name, data.supplier_tax_id);
       }
@@ -301,7 +301,7 @@ export const invoiceApi = {
       return decorate(inv, suppliers);
     }),
 
-  update: (id: number, data: any) =>
+  update: (id: string, data: any) =>
     guard(() => {
       const userId = getUserId();
       const db = readDB();
@@ -329,7 +329,7 @@ export const invoiceApi = {
       return decorate(inv, suppliers);
     }),
 
-  delete: (id: number) =>
+  delete: (id: string) =>
     guard(() => {
       const userId = getUserId();
       const db = readDB();
@@ -399,7 +399,7 @@ export const supplierApi = {
       return sup;
     }),
 
-  update: (id: number, data: any) =>
+  update: (id: string, data: any) =>
     guard(() => {
       const userId = getUserId();
       const db = readDB();
@@ -415,7 +415,7 @@ export const supplierApi = {
       return sup;
     }),
 
-  delete: (id: number) =>
+  delete: (id: string) =>
     guard(() => {
       const userId = getUserId();
       const db = readDB();

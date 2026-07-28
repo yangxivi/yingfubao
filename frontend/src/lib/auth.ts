@@ -1,7 +1,8 @@
-// 本地鉴权：使用 Web Crypto (PBKDF2) 哈希密码，会话存于 localStorage。
-// 兼容页面代码读取的 `token` / `user` 键。纯前端，无后端参与。
+// 鉴权：使用 Web Crypto (PBKDF2) 哈希密码，用户记录存于 Supabase users 表。
+// 会话仍存于 localStorage（token / user），登录后预热云端缓存（initUserDB）。
 
-import { readDB, writeDB } from './db';
+import { supabase } from './supabase';
+import { initUserDB, clearUserCache } from './db';
 import type { User } from './db';
 
 const SESSION_KEY = 'token';
@@ -51,7 +52,7 @@ export function publicUser(u: User) {
   return { id: u.id, username: u.username, company_name: u.company_name, email: u.email };
 }
 
-function makeToken(userId: number): string {
+function makeToken(userId: string): string {
   return btoa(`${userId}:${Date.now()}:${Math.random().toString(36).slice(2)}`);
 }
 
@@ -63,9 +64,10 @@ export function setSession(user: User): void {
 export function clearSession(): void {
   localStorage.removeItem(SESSION_KEY);
   localStorage.removeItem(USER_KEY);
+  clearUserCache();
 }
 
-export function getCurrentUserId(): number | null {
+export function getCurrentUserId(): string | null {
   const raw = localStorage.getItem(USER_KEY);
   if (!raw) return null;
   try {
@@ -81,23 +83,35 @@ export async function registerUser(data: {
   company_name?: string;
   email?: string;
 }): Promise<{ access_token: string; user: ReturnType<typeof publicUser> }> {
-  const db = readDB();
-  if (db.users.some((u) => u.username === data.username)) {
-    throw new Error('用户名已存在');
-  }
-  const id = db.seq.users;
-  db.seq.users += 1;
+  const { data: existing } = await supabase
+    .from('users')
+    .select('id')
+    .eq('username', data.username)
+    .maybeSingle();
+  if (existing) throw new Error('用户名已存在');
+
+  const { data: row, error } = await supabase
+    .from('users')
+    .insert({
+      username: data.username,
+      password_hash: await hashPassword(data.password),
+      company_name: data.company_name || '',
+      email: data.email || '',
+    })
+    .select()
+    .single();
+  if (error) throw new Error(error.message || '注册失败');
+
   const user: User = {
-    id,
-    username: data.username,
-    passwordHash: await hashPassword(data.password),
-    company_name: data.company_name || '',
-    email: data.email || '',
-    created_at: new Date().toISOString(),
+    id: row.id,
+    username: row.username,
+    passwordHash: row.password_hash,
+    company_name: row.company_name,
+    email: row.email,
+    created_at: row.created_at,
   };
-  db.users.push(user);
-  writeDB(db);
   setSession(user);
+  await initUserDB(user.id);
   return { access_token: makeToken(user.id), user: publicUser(user) };
 }
 
@@ -105,20 +119,33 @@ export async function loginUser(data: {
   username: string;
   password: string;
 }): Promise<{ access_token: string; user: ReturnType<typeof publicUser> }> {
-  const db = readDB();
-  const user = db.users.find((u) => u.username === data.username);
-  if (!user) throw new Error('用户名或密码错误');
-  const ok = await verifyPassword(data.password, user.passwordHash);
+  const { data: row, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('username', data.username)
+    .maybeSingle();
+  if (error || !row) throw new Error('用户名或密码错误');
+
+  const ok = await verifyPassword(data.password, row.password_hash);
   if (!ok) throw new Error('用户名或密码错误');
+
+  const user: User = {
+    id: row.id,
+    username: row.username,
+    passwordHash: row.password_hash,
+    company_name: row.company_name,
+    email: row.email,
+    created_at: row.created_at,
+  };
   setSession(user);
+  await initUserDB(user.id);
   return { access_token: makeToken(user.id), user: publicUser(user) };
 }
 
 export async function getMe() {
   const id = getCurrentUserId();
   if (!id) throw new Error('未登录');
-  const db = readDB();
-  const user = db.users.find((u) => u.id === id);
-  if (!user) throw new Error('未登录');
-  return publicUser(user);
+  const { data: row, error } = await supabase.from('users').select('*').eq('id', id).maybeSingle();
+  if (error || !row) throw new Error('未登录');
+  return publicUser(row as User);
 }

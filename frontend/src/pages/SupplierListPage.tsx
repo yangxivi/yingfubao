@@ -21,7 +21,7 @@ export default function SupplierListPage() {
   const [form] = Form.useForm();
 
   // 多选
-  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
   const [batchDeleting, setBatchDeleting] = useState(false);
 
   // 高级筛选
@@ -67,7 +67,7 @@ export default function SupplierListPage() {
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     try {
       await supplierApi.delete(id);
       message.success('已删除');
@@ -197,7 +197,7 @@ export default function SupplierListPage() {
   // 行选择配置
   const rowSelection: AntTableRowSelection<any> = {
     selectedRowKeys,
-    onChange: (keys: React.Key[]) => setSelectedRowKeys(keys as number[]),
+    onChange: (keys: React.Key[]) => setSelectedRowKeys(keys as string[]),
     getCheckboxProps: () => ({ disabled: false }),
   };
 
