@@ -1,170 +1,181 @@
 # 应付宝 (YingFuBao) — 应付账款管理系统
 
-面向中小企业的在线应付账款管理工具：登录后上传增值税发票（图片/PDF），系统自动 OCR 识别并录入发票列表，按 **15 / 30 / 60 / 90 天** 账期生成到期提醒，并管理供应商（销售方）。
+面向中小企业的在线应付账款管理工具：上传增值税发票（图片/PDF），系统自动 **OCR 识别**并录入发票列表，按账期生成到期提醒，统一管理供应商信息。
+
+> 🌐 **在线体验**：[https://yangxivi.github.io/yingfubao/](https://yangxivi.github.io/yingfubao/)
 
 ## 功能特性
 
-- 🔐 **用户登录**：注册 / 登录，JWT 鉴权，数据按用户隔离
-- 📄 **发票 OCR 识别**：上传发票图片或 PDF，自动提取发票号码、开票日期、销售方名称/税号、金额、税额、税率等
-  - 引擎优先级：腾讯云增值税发票 OCR（推荐） → 本地 Tesseract → 人工补录（始终可用）
-- 📊 **发票列表**：筛选、搜索、编辑、标记已付款、删除
-- ⏰ **到期提醒**：按 15/30/60/90 天及已逾期分组统计，仪表盘总览
-- 🏢 **供应商管理**：自动建档、按发票归集、统计交易金额
-- 🖥️ **前后端一体**：FastAPI 同时提供 API 与托管构建后的前端
+### 📊 仪表盘
+- 发票总数、金额合计、待付款 / 已逾期统计卡片
+- 到期发票提醒（按 15 / 30 / 60 / 90 天分组，支持 Tab 切换）
+- 最近 5 条发票 & 最近 5 家供应商快捷入口
+
+### 📄 发票管理
+- **OCR 智能识别**：上传图片或 PDF，自动提取发票号码、开票日期、销售方名称/税号、金额、税额、税率等字段
+- **多维度筛选**：关键词搜索 + 状态筛选 + 高级筛选（供应商 / 开票日期范围 / 付款日期范围 / 金额区间）
+- **表格操作**：列排序、分页、多选批量删除（带确认弹窗）
+- **编辑联动**：修改开票日期时，付款日期自动 +90 天（可手动覆盖）
+- **状态流转**：待付款 → 已付款 / 已逾期，一键标记已付
+- **详情抽屉**：查看完整字段 + 发票原图预览 + 上传/更换发票图
+
+### 🏢 供应商管理
+- 自动建档（OCR 识别出的供应商自动入库去重）
+- 完整档案：公司名称、统一社会信用代码、联系人、电话、地址、开户银行、银行账号、备注
+- 多选批量删除、列排序、搜索筛选
+- 有/无联系人快捷筛选
+
+### 🔐 数据安全
+- 基于 **Supabase**（PostgreSQL）存储，数据云端持久化
+- OCR 密钥通过 **Supabase Edge Function** 中转，前端不暴露
+- 前端配置通过 **GitHub Secrets** CI 注入，代码中无硬编码密钥
 
 ## 技术栈
 
-- 后端：FastAPI + SQLAlchemy + SQLite + python-jose(JWT) + bcrypt
-- OCR：腾讯云 OCR（`tencentcloud-sdk-python`）/ pytesseract + pymupdf(PDF)
-- 前端：React 18 + TypeScript + Vite + Ant Design 5
+| 层 | 技术 |
+|---|---|
+| 前端框架 | React 18 + TypeScript (strict) |
+| UI 组件库 | Ant Design 5 + @ant-design/icons |
+| 构建工具 | Vite 6 |
+| 路由 | React Router v6 |
+| 日期处理 | dayjs |
+| PDF 渲染 | pdfjs-dist |
+| 数据库 / 后端 | **Supabase** (PostgreSQL + REST API + Row Level Security) |
+| OCR 引擎 | **百度 AI 高精度文字识别** (accurate_basic)，通过 Supabase Edge Function 中转 |
+| 部署 | GitHub Actions → **GitHub Pages** (SPA + 404 fallback) |
 
-## 目录结构
+## 项目结构
 
 ```
 yingfubao/
-├── backend/                # FastAPI 后端
-│   ├── main.py             # 应用入口与全部 API
-│   ├── auth.py             # JWT 鉴权与密码哈希
-│   ├── models.py           # 数据库模型
-│   ├── database.py         # SQLAlchemy 引擎/会话
-│   ├── ocr_service.py      # OCR 识别（可插拔引擎）
-│   ├── requirements.txt
-│   └── uploads/            # 上传的发票文件
-├── frontend/               # React 前端
+├── frontend/                        # React 前端（主应用）
 │   ├── src/
-│   └── dist/               # 构建产物（生产由后端托管）
-├── Dockerfile              # 生产镜像（含 tesseract）
-├── .env.example            # 环境变量示例
-├── build.bat / start-dev.bat / start-prod.bat
+│   │   ├── pages/
+│   │   │   ├── LoginPage.tsx        # 登录页
+│   │   │   ├── DashboardPage.tsx    # 仪表盘（统计+提醒+最近记录）
+│   │   │   ├── InvoiceListPage.tsx  # 发票列表（筛选/多选/批量删除/编辑）
+│   │   │   └── SupplierListPage.tsx # 供应商管理（多选/排序/批量删除）
+│   │   ├── api/client.ts            # Supabase API 封装
+│   │   ├── lib/
+│   │   │   ├── supabase.ts          # Supabase 客户端初始化
+│   │   │   └── ocr.ts               # OCR 调用 + 结构化字段提取
+│   │   ├── components/              # 公共组件
+│   │   ├── App.tsx                  # 路由与布局
+│   │   └── main.tsx                 # 入口
+│   ├── package.json
+│   ├── vite.config.ts
+│   └── tsconfig.json
+├── supabase/
+│   └── functions/
+│       └── baidu-ocr/               # Edge Function（百度 OCR 中转）
+│           └── index.ts
+├── .github/workflows/deploy.yml     # CI/CD：构建 → GitHub Pages
+├── backend/                         # FastAPI 后端（本地开发备用）
+│   ├── main.py / models.py / auth.py
+│   └── requirements.txt
+├── docs/setup-baidu-ocr.md          # 百度 OCR 配置文档
 └── README.md
 ```
 
----
+## 快速开始
 
-## 一、本地运行
+### 方式一：直接使用线上版本
 
-### 方式 A：生产模式（后端一体托管前端，最简单）
+打开 [https://yangxivi.github.io/yingfubao/](https://yangxivi.github.io/yingfubao/) 即可使用（无需安装）。
 
-```bat
-build.bat            :: 构建前端到 frontend/dist
-start-prod.bat       :: 启动后端（自动建 venv、装依赖），访问 http://localhost:8000
-```
-
-> 首次运行 `start-prod.bat` 会自动创建 Python 虚拟环境并安装依赖（需联网）。
-
-### 方式 B：开发模式（前后端热更新）
-
-```bat
-start-dev.bat        :: 同时启动后端 :8000 与前端 :3000
-```
-
-浏览器打开 http://127.0.0.1:3000
-
-### 手动步骤（Linux / macOS）
+### 方式二：本地开发
 
 ```bash
-# 后端
-cd backend
-python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-uvicorn main:app --host 0.0.0.0 --port 8000 &
+# 克隆仓库
+git clone https://github.com/yangxivi/yingfubao.git
+cd yingfubao/frontend
 
-# 前端（新终端）
-cd frontend
+# 安装依赖
 npm install
-npm run build        # 构建后由后端 / 托管
-# 或 npm run dev 开发模式（:3000，代理 /api 到 :8000）
+
+# 复制环境变量（Supabase 配置）
+cp .env.example .env
+# 编辑 .env 填入你的 Supabase URL 和 Anon Key
+
+# 启动开发服务器
+npm run dev
 ```
 
----
+浏览器打开 http://localhost:3000
 
-## 二、OCR 配置（可选，但推荐）
+### 方式三：本地后端模式（FastAPI）
 
-系统在无 OCR 时仍可运行（上传后弹窗人工补录）。要开启自动识别：
+如需使用本地 FastAPI 后端：
 
-### 方案 1：腾讯云 OCR（推荐，专为中文发票优化）
-
-1. 注册腾讯云，在「访问管理 → API 密钥管理」获取 SecretId / SecretKey
-2. 开通「文字识别」下的「增值税发票识别」服务（有免费额度）
-3. 在 `backend/` 下创建 `.env`：
-
-```ini
-JWT_SECRET=你的随机密钥
-TENCENT_SECRET_ID=你的SecretId
-TENCENT_SECRET_KEY=你的SecretKey
+```bat
+build.bat            # 构建前端到 frontend/dist
+start-prod.bat       # 启动后端（自动创建 venv 并安装依赖）
 ```
 
-4. 重启后端即可。识别精度最高，支持增值税专用发票/普通发票。
+访问 http://localhost:8000
 
-### 方案 2：本地 Tesseract（零密钥，可离线）
+## OCR 配置
 
-- 服务器安装 Tesseract 并包含中文包 `chi_sim`：
-  - Ubuntu/Debian：`apt-get install tesseract-ocr tesseract-ocr-chi-sim`
-  - Windows：安装 UB-Mannheim Tesseract 并勾选中文
-- 未配置腾讯云密钥时自动启用；无需额外环境变量。
+系统默认使用 **百度高精度通用文字识别**（通过 Supabase Edge Function 中转），识别精度高且专为中文优化。
 
----
+### 配置步骤
 
-## 三、部署到服务器（Docker，推荐上线方式）
+1. 注册 [百度智能云](https://cloud.baidu.com/)，开通「文字识别」服务
+2. 在「应用管理」获取 **API Key** 和 **Secret Key**
+3. 创建 [Supabase](https://supabase.com/) 项目，获取 **URL** 和 **anon key**
+4. 部署 Edge Function 并设置 Secrets（详见 [docs/setup-baidu-ocr.md](docs/setup-baidu-ocr.md)）
+
+### 调用链路
+
+```
+前端上传发票图片
+    ↓ base64 编码 + 压缩
+Supabase Edge Function (baidu-ocr)
+    ↓ 用 BAIDU_API_KEY / SECRET_KEY 换取 access_token
+百度 OCR API (accurate_basic)
+    ↓ 返回原始识别文本
+前端正则 + 关键词锚定 → 结构化字段提取
+    ↓ 自动填入发票列表 + 供应商自动建档
+```
+
+## 部署
+
+### GitHub Pages（推荐）
+
+项目已配置 GitHub Actions CI/CD，推送到 `main` 分支即自动部署：
+
+1. Fork 本仓库
+2. 在仓库 Settings → Secrets and variables → Actions 中添加：
+   - `VITE_SUPABASE_URL` — 你的 Supabase Project URL
+   - `VITE_SUPABASE_ANON_KEY` — 你的 Supabase anon public key
+3. 在 Settings → Pages 中启用 GitHub Pages，选择 `gh-pages` 分支
+4. 推送代码即可自动构建发布
+
+### Docker
 
 ```bash
-# 构建镜像
 docker build -t yingfubao .
-
-# 运行（映射端口，传入密钥）
-docker run -d --name yingfubao \
-  -p 8000:8000 \
-  -e JWT_SECRET=随机长字符串 \
-  -e TENCENT_SECRET_ID=你的SecretId \
-  -e TENCENT_SECRET_KEY=你的SecretKey \
-  yingfubao
+docker run -d --name yingfubao -p 8000:8000 yingfubao
 ```
 
-访问 `http://服务器IP:8000`。
+## 数据说明
 
-### 无 Docker 的云主机
+| 说明 | 详情 |
+|------|------|
+| 数据存储 | Supabase PostgreSQL（生产）/ SQLite `backend/yingfubao.db`（本地开发） |
+| 发票图片 | 生产环境存 Supabase Storage；本地存 `backend/uploads/` |
+| 付款截止日 | 默认 = 开票日期 + **90 天**；编辑时修改开票日期自动联动 |
+| 供应商建档 | OCR 识别出销售方名称后自动创建（去重），联系人/电话/地址供手动补充 |
 
-在云主机（如腾讯云 CVM、阿里云 ECS）上：
-
-```bash
-git clone <repo> && cd yingfubao
-# 后端
-cd backend && python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt gunicorn
-uvicorn main:app --host 0.0.0.0 --port 8000   # 或 gunicorn main:app -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000
-# 前端（另开终端）
-cd ../frontend && npm install && npm run build
-```
-
-配合 Nginx 反向代理 + HTTPS 即可公网访问。示例 Nginx：
-
-```nginx
-server {
-    listen 80; server_name your.domain.com;
-    location / { proxy_pass http://127.0.0.1:8000; proxy_set_header Host $host; }
-}
-```
-
-### 云平台（Render / Railway / Fly.io）
-
-这些平台支持直接部署 Docker 镜像或 Python 服务。构建命令 `pip install -r requirements.txt`，启动命令：
-`gunicorn main:app -k uvicorn.workers.UvicornWorker -b 0.0.0.0:$PORT`，
-需设置环境变量 `JWT_SECRET` 与腾讯云密钥（可选）。
-
----
-
-## 四、数据说明
-
-- 数据存储在 `backend/yingfubao.db`（SQLite），部署时请备份该文件。
-- 上传的发票原图保存在 `backend/uploads/`。
-- 付款截止日默认 = 开票日期 + 90 天；手动新增可自定义或留空自动推算。
-- 税率：金晟达/星辰瑞杰/湖北道正为 13%，新瑞雨辰为 3%（加工服务），系统按识别结果分别入账。
-
-## 五、常见问题
+## 常见问题
 
 | 现象 | 排查 |
-|---|---|
-| 上传后发票字段为空 | 未配置 OCR 引擎，属正常——在弹窗人工补全即可 |
-| 登录提示密码错误 | 确认注册成功；SQLite 库在 `backend/yingfubao.db` |
-| 前端刷新子页面 404 | 已由后端 SPA 回退处理；若用纯静态托管需配置 history fallback |
-| OCR 识别不准 | 推荐使用腾讯云 OCR；或检查发票图片清晰度 |
+|------|------|
+| 页面显示「未配置 Supabase」 | 检查 `.env` 或 GitHub Secrets 是否正确填写了 Supabase URL 和 anon key |
+| OCR 识别结果不准确 | 确保发票图片清晰、正放；复杂版式可在编辑弹窗手动修正 |
+| 供应商税号配错 | 已修复——改用锚点行索引定位销售方/购买方区域，避免左右并排布局导致的误判 |
+| GitHub Pages 刷新后还是旧版本 | 浏览器缓存导致，按 `Ctrl+Shift+R` 强制刷新 |
+
+## License
+
+MIT
