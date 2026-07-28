@@ -15,6 +15,12 @@ const USER_KEY = 'user';
 // 运行模式：云端 / 本地
 let authMode: 'cloud' | 'local' = 'cloud';
 
+/** 检查本地模式是否有已注册的用户（供登录页显示引导） */
+export function hasLocalUsers(): boolean {
+  const users = readLocalUsers();
+  return users.length > 0;
+}
+
 /** 获取当前鉴权模式 */
 export function getAuthMode(): 'cloud' | 'local' {
   return authMode;
