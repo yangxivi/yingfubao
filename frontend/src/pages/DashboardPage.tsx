@@ -242,39 +242,39 @@ export default function DashboardPage() {
 
           <Row gutter={[16, 16]} className="cockpit-row">
             {/* 第一行：趋势 + 状态 */}
-            <Col xs={24} lg={14}>
+            <Col xs={24} lg={12}>
               <Card title="近 12 个月开票趋势" className="cockpit-card">
                 <TrendChart data={analytics.monthlyTrend} />
               </Card>
             </Col>
 
-            <Col xs={24} lg={10}>
+            <Col xs={24} lg={12}>
               <Card title="付款状态分布" className="cockpit-card">
                 <StatusDonut data={analytics.statusDistribution} />
               </Card>
             </Col>
 
             {/* 第二行：账龄 + 供应商 */}
-            <Col xs={24} md={12} lg={10}>
+            <Col xs={24} lg={12}>
               <Card title="未来 6 个月应付预测" className="cockpit-card">
                 <AgingBars data={analytics.aging} />
               </Card>
             </Col>
 
-            <Col xs={24} md={12} lg={14}>
+            <Col xs={24} lg={12}>
               <Card title="Top5 供应商应付款" className="cockpit-card">
                 <SupplierBars data={analytics.topSuppliers} />
               </Card>
             </Col>
 
             {/* 第三行：到期分布 + 月度完成率 */}
-            <Col xs={24} lg={14}>
+            <Col xs={24} lg={12}>
               <Card title="待付款到期票追度" className="cockpit-card">
                 <PaymentDueDist data={analytics.paymentDueDist} />
               </Card>
             </Col>
 
-            <Col xs={24} lg={10}>
+            <Col xs={24} lg={12}>
               <Card title="本月付款完成率" className="cockpit-card">
                 <MonthlyRate data={{
                   ratio: analytics.monthPaidRatio,
