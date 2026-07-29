@@ -411,11 +411,7 @@ export default function DashboardPage() {
                 </Card>
               </Col>
 
-              <Col xs={24} lg={24}>
-                <Card title="风险预警面板" className="cockpit-card">
-                  <RiskAlertPanel invoices={allInvoices} navigate={navigate} />
-                </Card>
-              </Col>
+              <RiskAlertPanel invoices={allInvoices} navigate={navigate} />
             </Row>
           </div>
         </div>
@@ -1226,23 +1222,17 @@ function RiskAlertPanel({ invoices, navigate }: { invoices: any[]; navigate: (p:
   );
 
   return (
-    <Row gutter={[16, 16]}>
+    <>
       <Col xs={24} lg={12}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-          <WarningOutlined style={{ color: '#ff4d4f' }} />
-          <span style={{ fontWeight: 600, fontSize: 14 }}>大额逾期 TOP 10</span>
-          <span style={{ fontSize: 12, color: '#999' }}>(按金额)</span>
-        </div>
-        {overdue.length > 0 ? overdue.map((inv) => <RowItem key={inv.id} inv={inv} kind="overdue" />) : <Empty description="无逾期发票" image={Empty.PRESENTED_IMAGE_SIMPLE} />}
+        <Card title="大额逾期 TOP 10（按金额）" className="cockpit-card">
+          {overdue.length > 0 ? overdue.map((inv) => <RowItem key={inv.id} inv={inv} kind="overdue" />) : <Empty description="无逾期发票" image={Empty.PRESENTED_IMAGE_SIMPLE} />}
+        </Card>
       </Col>
       <Col xs={24} lg={12}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-          <ClockCircleOutlined style={{ color: '#fa8c16' }} />
-          <span style={{ fontWeight: 600, fontSize: 14 }}>即将到期 TOP 10</span>
-          <span style={{ fontSize: 12, color: '#999' }}>(15 天内 · 按金额)</span>
-        </div>
-        {nearDue.length > 0 ? nearDue.map((inv) => <RowItem key={inv.id} inv={inv} kind="near" />) : <Empty description="无即将到期" image={Empty.PRESENTED_IMAGE_SIMPLE} />}
+        <Card title="即将到期 TOP 10（15 天内 · 按金额）" className="cockpit-card">
+          {nearDue.length > 0 ? nearDue.map((inv) => <RowItem key={inv.id} inv={inv} kind="near" />) : <Empty description="无即将到期" image={Empty.PRESENTED_IMAGE_SIMPLE} />}
+        </Card>
       </Col>
-    </Row>
+    </>
   );
 }
