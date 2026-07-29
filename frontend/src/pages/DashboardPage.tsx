@@ -497,7 +497,7 @@ export default function DashboardPage() {
       >
         <div style={{ marginBottom: 16 }}>
           <div style={{ fontSize: 13, color: '#666', marginBottom: 8 }}>当前账期：{getAccountPeriod()} 天</div>
-          <div style={{ fontSize: 13, color: '#999' }}>系统默认付款日期 = 开票日期 + 账期天数。保存后所有未付款发票会按新账期重新计算。</div>
+          <div style={{ fontSize: 13, color: '#999' }}>系统默认付款日期 = 开票日期 + 账期天数。保存后所有发票会按新账期重新计算。</div>
         </div>
 
         <div style={{ marginBottom: 16 }}>
