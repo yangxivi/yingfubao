@@ -154,7 +154,7 @@ export default function UploadPage() {
           <Card title="📊 处理统计" size="small" style={{ marginBottom: 16 }}>
             <Space direction="vertical" style={{ width: '100%' }} size="middle">
               <Statistic
-                title="待处理"
+                title="共处理"
                 value={stats.success + stats.fail + stats.skip}
                 valueStyle={{ fontSize: 22 }}
               />
