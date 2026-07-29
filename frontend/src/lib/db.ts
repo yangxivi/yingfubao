@@ -188,6 +188,15 @@ function rowToInvoice(r: any): Invoice {
   };
 }
 
+// 云端同步用的发票行：剔除 image_data（base64 大图，UI 从不展示，启动预热也已排除）。
+// 这样每次写入不会再回传全量 base64 图片，显著降低写放大与带宽消耗
+// （Supabase upsert 仅更新提供的列，已有行的 image_data 不会被清空）。
+function invoiceToSyncRow(i: Invoice): Record<string, unknown> {
+  const row = invoiceToRow(i);
+  delete (row as Record<string, unknown>).image_data;
+  return row;
+}
+
 // ===== 云端同步（串行化，避免并发覆盖）=====
 function syncToCloud() {
   if (!cache || !cacheUserId || isLocalMode) return; // 本地模式不同步云端
@@ -203,7 +212,7 @@ function syncToCloud() {
       if (data.invoices.length) {
         await supabase
           .from('invoices')
-          .upsert(data.invoices.map(invoiceToRow), { onConflict: 'id' });
+          .upsert(data.invoices.map(invoiceToSyncRow), { onConflict: 'id' });
       }
     } catch (e) {
       console.warn('云端同步失败', e);
