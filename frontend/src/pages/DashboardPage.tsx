@@ -331,7 +331,7 @@ export default function DashboardPage() {
             <span style={{ fontSize: 12, color: '#999', fontWeight: 400, marginLeft: 8 }}>可视化数据概览</span>
           </div>
 
-          <Row gutter={[16, 16]} className="cockpit-row">
+          <Row gutter={[16, 16]} className="cockpit-row" align="stretch">
             {/* 第一行：趋势 + 状态 */}
             <Col xs={24} lg={12}>
               <Card title="近 12 个月开票趋势" className="cockpit-card">
