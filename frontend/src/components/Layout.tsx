@@ -140,7 +140,15 @@ export default function Layout() {
               key={item.key}
               className={`yb-nav-link ${activeKey === item.key ? 'active' : ''}`}
               onClick={() => navigate(item.key)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                fontSize: 15,
+                fontWeight: 600,
+              }}
             >
+              {item.icon}
               {item.label}
             </div>
           ))}
