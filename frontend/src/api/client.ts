@@ -295,8 +295,16 @@ export const invoiceApi = {
         if (data[f] !== undefined) (updated as any)[f] = data[f];
       }
       if (data.payment_date !== undefined) {
-        updated.payment_date = data.payment_date || addDays(updated.invoice_date, getAccountPeriod());
-        updated.payment_auto = !!data.payment_date;
+        const autoPayDate = addDays(updated.invoice_date, getAccountPeriod());
+        if (data.payment_date && data.payment_date !== autoPayDate) {
+          // 用户显式修改了付款日期且与自动派生值不同，视为手动锁定
+          updated.payment_date = data.payment_date;
+          updated.payment_auto = false;
+        } else {
+          // 未填写或等于自动派生值，恢复/保持自动派生
+          updated.payment_date = autoPayDate;
+          updated.payment_auto = true;
+        }
       }
       db.invoices[idx] = updated;
       writeDB(db);
@@ -321,7 +329,7 @@ export const invoiceApi = {
       return {};
     }),
 
-  // 账期变更后，重新计算所有「自动派生」且未付款发票的付款日期
+  // 账期变更后，重新计算所有未付款发票的付款日期
   recomputePaymentDates: () =>
     guard(() => {
       const userId = getUserId();
@@ -330,10 +338,10 @@ export const invoiceApi = {
       let updated = 0;
       for (const inv of db.invoices) {
         if (inv.userId !== userId) continue;
-        if (!inv.payment_auto) continue; // 手动设置的保留
         if (inv.status === 'paid') continue; // 已付款不回溯
         if (!inv.invoice_date) continue;
         inv.payment_date = addDays(inv.invoice_date, period);
+        inv.payment_auto = true; // 重新计算后恢复为自动派生
         updated += 1;
       }
       if (updated > 0) writeDB(db);
