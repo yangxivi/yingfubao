@@ -6,11 +6,7 @@
 // - 保留 PDF 支持（pdfjs 渲染成图片逐页发百度）
 // - 字段提取逻辑（parseStructured 等）完全复用，这是核心资产，不动
 
-import * as pdfjsLib from 'pdfjs-dist';
-import workerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { supabase } from './supabase';
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
 
 export interface OcrResult {
   invoice_no: string;
@@ -61,7 +57,12 @@ async function imageToCompressedBase64(file: File, maxSide = 2000): Promise<stri
 }
 
 // PDF → 每页渲染成 canvas（百度 OCR 不直接收 PDF，需前端转图）
+// pdfjs 体积较大（~1MB），改为仅在处理 PDF 时动态 import，避免被打进首屏主包
 async function pdfToImages(file: File): Promise<HTMLCanvasElement[]> {
+  const pdfjsLib = await import('pdfjs-dist');
+  const workerSrc = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
+  pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
+
   const buf = await file.arrayBuffer();
   const doc = await pdfjsLib.getDocument({ data: buf }).promise;
   const out: HTMLCanvasElement[] = [];

@@ -212,9 +212,17 @@ function syncToCloud() {
 }
 
 async function loadCloud(userId: string): Promise<DBShape> {
+  // 启动预热：仅拉取业务字段，不包含 image_data（base64 大图，UI 从不展示，且按需才需要）。
+  // 这能显著降低首次进入的数据下载量与耗时。
+  const invoiceColumns = [
+    'id', 'user_id', 'supplier_id', 'invoice_no', 'invoice_date', 'payment_date',
+    'amount_excluding_tax', 'tax_amount', 'total_amount', 'tax_rate', 'business_month',
+    'remark', 'buyer_name', 'buyer_tax_id', 'seller_name', 'seller_tax_id', 'status',
+    'payment_auto', 'raw_text', 'file_name', 'created_at',
+  ].join(',');
   const [supRes, invRes] = await Promise.all([
     supabase.from('suppliers').select('*').eq('user_id', userId),
-    supabase.from('invoices').select('*').eq('user_id', userId),
+    supabase.from('invoices').select(invoiceColumns).eq('user_id', userId),
   ]);
   const suppliers = ((supRes.data as any[]) || []).map(rowToSupplier);
   const invoices = ((invRes.data as any[]) || []).map(rowToInvoice);

@@ -1,18 +1,21 @@
 import { useState, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Spin } from 'antd';
-import Layout from './components/Layout';
-import LoginPage from './pages/LoginPage';
-import DashboardPage from './pages/DashboardPage';
-import InvoiceListPage from './pages/InvoiceListPage';
-import SupplierListPage from './pages/SupplierListPage';
-import RemindersPage from './pages/RemindersPage';
-import UploadPage from './pages/UploadPage';
-import { getCurrentUserId, detectAndLockAuthMode, syncCurrentUserToCloud } from './lib/auth';
+import { Suspense, lazy } from 'react';
+import Layout from './components/Layout'; // 外壳保留静态导入，首屏立即可见
+import { getCurrentUserId, detectAndLockAuthMode, syncCurrentUserToCloud, setAuthMode } from './lib/auth';
 import { initUserDB } from './lib/db';
 import { initAccountPeriodFromSession } from './lib/accountPeriod';
 import { setCloudStatus } from './lib/cloudStatus';
-import SettingsPage from './pages/SettingsPage';
+
+// 页面按需懒加载，避免首屏打包全部页面（含仪表盘图表、上传、OCR 逻辑）
+const LoginPage = lazy(() => import('./pages/LoginPage'));
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const InvoiceListPage = lazy(() => import('./pages/InvoiceListPage'));
+const SupplierListPage = lazy(() => import('./pages/SupplierListPage'));
+const RemindersPage = lazy(() => import('./pages/RemindersPage'));
+const UploadPage = lazy(() => import('./pages/UploadPage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const token = localStorage.getItem('token');
@@ -23,12 +26,26 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 export default function App() {
   const [ready, setReady] = useState(false);
 
+  // 启动各异步步骤加超时兜底，避免任意网络调用挂起导致永久 spinner
+  const withTimeout = <T,>(p: Promise<T>, ms: number, label: string): Promise<T | null> => {
+    return Promise.race([
+      p,
+      new Promise<T | null>((resolve) =>
+        setTimeout(() => {
+          console.warn(`[init] ${label} 超时(${ms}ms)，跳过以免永久卡在加载页`);
+          resolve(null);
+        }, ms),
+      ),
+    ]);
+  };
+
   // 刷新/重进时：探测云端状态 → 预热数据 → 再渲染页面
   useEffect(() => {
     const init = async () => {
-      // 1. 探测 Supabase 状态并锁定鉴权模式
-      const status = await detectAndLockAuthMode();
-      setCloudStatus(status);
+      // 1. 探测 Supabase 状态并锁定鉴权模式（超时则保守降级本地模式）
+      const status = await withTimeout(detectAndLockAuthMode(), 8000, '探测云端');
+      setCloudStatus(status ?? 'uninitialized');
+      if (status === null) setAuthMode('local');
 
       // 2. 恢复账期设置
       initAccountPeriodFromSession();
@@ -37,14 +54,10 @@ export default function App() {
       const token = localStorage.getItem('token');
       const userId = getCurrentUserId();
       if (token && userId) {
-        if (status === 'ready') {
-          try { await syncCurrentUserToCloud(); } catch (e) { console.warn('同步账号到云端失败', e); }
+        if ((status ?? 'uninitialized') === 'ready') {
+          await withTimeout(syncCurrentUserToCloud(), 8000, '同步账号');
         }
-        try {
-          await initUserDB(userId);
-        } catch (e) {
-          console.warn('初始化数据失败', e);
-        }
+        await withTimeout(initUserDB(userId), 15000, '预热数据');
       }
 
       // 4. 数据就绪后才允许渲染（解决仪表盘首次加载竞态问题）
@@ -58,16 +71,18 @@ export default function App() {
   }
 
   return (
-    <Routes>
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
-        <Route index element={<DashboardPage />} />
-        <Route path="invoices" element={<UploadPage />} />
-        <Route path="invoice-list" element={<InvoiceListPage />} />
-        <Route path="suppliers" element={<SupplierListPage />} />
-        <Route path="reminders" element={<RemindersPage />} />
-        <Route path="settings" element={<SettingsPage />} />
-      </Route>
-    </Routes>
+    <Suspense fallback={<Spin size="large" style={{ display: 'block', margin: '160px auto' }} />}>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
+          <Route index element={<DashboardPage />} />
+          <Route path="invoices" element={<UploadPage />} />
+          <Route path="invoice-list" element={<InvoiceListPage />} />
+          <Route path="suppliers" element={<SupplierListPage />} />
+          <Route path="reminders" element={<RemindersPage />} />
+          <Route path="settings" element={<SettingsPage />} />
+        </Route>
+      </Routes>
+    </Suspense>
   );
 }
