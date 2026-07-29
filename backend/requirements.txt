@@ -1,0 +1,12 @@
+fastapi==0.115.6
+uvicorn==0.34.0
+sqlalchemy==2.0.36
+pydantic==2.10.3
+python-jose[cryptography]==3.3.0
+bcrypt==4.0.1
+python-multipart==0.0.19
+aiofiles==24.1.0
+gunicorn==23.0.0
+pymupdf==1.25.3
+pillow==11.1.0
+pytesseract==0.3.13
