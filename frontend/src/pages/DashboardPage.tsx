@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Card, Statistic, Tag, Spin, Alert, Image, Empty, Button,
+  Card, Statistic, Tag, Alert, Image, Empty, Button,
   Row, Col, Progress, Tooltip, Modal, InputNumber, Space, message,
 } from 'antd';
 import {
@@ -131,7 +131,7 @@ export default function DashboardPage() {
     }).finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <Spin size="large" style={{ display: 'block', margin: '100px auto' }} />;
+  if (loading) return null;
   if (!data) return <Alert type="error" message="加载失败" />;
 
   // 计算各状态数量
