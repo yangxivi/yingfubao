@@ -7,6 +7,7 @@
 // - 字段提取逻辑（parseStructured 等）完全复用，这是核心资产，不动
 
 import { supabase } from './supabase';
+import { getAuthMode } from './auth';
 
 export interface OcrResult {
   invoice_no: string;
@@ -482,6 +483,27 @@ export async function recognizeInvoice(
   file: File,
   onProgress?: (current: number, total: number) => void,
 ): Promise<OcrResult> {
+  // 本地模式（未配置/未连接 Supabase）下没有云端百度 OCR 能力。
+  // 优雅降级：返回空结果，上传流程据此创建空白发票供用户手动填写，
+  // 避免本地模式下「上传发票」直接崩溃（此前会抛「未配置 Supabase」）。
+  if (getAuthMode() === 'local') {
+    console.warn('[ocr] 本地模式未配置 Supabase，跳过云端 OCR，将创建空白发票供手动填写');
+    return {
+      invoice_no: '',
+      invoice_date: '',
+      seller_name: '',
+      seller_tax_id: '',
+      buyer_name: '',
+      buyer_tax_id: '',
+      amount_excluding_tax: 0,
+      tax_amount: 0,
+      total_amount: 0,
+      tax_rate: '',
+      items: [],
+      raw_text: '',
+    };
+  }
+
   const isPdf =
     file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
 
