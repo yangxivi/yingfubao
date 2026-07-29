@@ -6,7 +6,6 @@ import {
 } from 'antd';
 import {
   FileTextOutlined,
-  DollarOutlined,
   ExclamationCircleOutlined,
   ClockCircleOutlined,
   TeamOutlined,
@@ -185,7 +184,7 @@ export default function DashboardPage() {
             <div className="stat-sub">所有待付金额总和</div>
           </div>
           <div className="stat-icon" style={{ background: '#fff7e6', color: '#fa8c16' }}>
-            <DollarOutlined />
+            ¥
           </div>
         </div>
       </div>
