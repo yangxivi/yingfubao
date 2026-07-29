@@ -386,7 +386,7 @@ export default function DashboardPage() {
               深度分析
               <span style={{ fontSize: 12, color: '#999', fontWeight: 400, marginLeft: 8 }}>账龄 · 现金流 · 风险 · 结构</span>
             </div>
-            <Row gutter={[16, 16]}>
+            <Row gutter={[16, 16]} className="cockpit-row" align="stretch">
               <Col xs={24} lg={12}>
                 <Card title="标准账龄分析" className="cockpit-card">
                   <StandardAgingTable invoices={allInvoices} />
