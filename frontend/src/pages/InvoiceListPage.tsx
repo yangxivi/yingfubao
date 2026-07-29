@@ -252,6 +252,7 @@ export default function InvoiceListPage() {
       width: 90,
       sorter: (a, b) => (daysLeft(a.payment_date) ?? 9999) - (daysLeft(b.payment_date) ?? 9999),
       render: (_: any, record: any) => {
+        if (record.status === 'paid') return null;
         const dl = daysLeft(record.payment_date);
         if (dl === null) return '-';
         // 负数=已逾期天数，正数=距离付款日剩余天数
