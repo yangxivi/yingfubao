@@ -11,7 +11,6 @@ import {
   UserOutlined,
   DownloadOutlined,
   ImportOutlined,
-  SettingOutlined,
 } from '@ant-design/icons';
 import { getCurrentUserId, clearSession, getAuthMode } from '../lib/auth';
 import { exportUserBackup, importUserBackup, isBackupFile } from '../lib/db';
@@ -23,7 +22,6 @@ const navItems = [
   { key: '/invoices', icon: <UploadOutlined />, label: '发票上传' },
   { key: '/invoice-list', icon: <FileTextOutlined />, label: '发票管理' },
   { key: '/suppliers', icon: <TeamOutlined />, label: '供应商管理' },
-  { key: '/settings', icon: <SettingOutlined />, label: '设置' },
 ];
 
 export default function Layout() {

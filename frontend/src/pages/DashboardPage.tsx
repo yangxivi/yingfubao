@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Card, Statistic, Tag, Spin, Alert, Image, Empty, Button,
-  Row, Col, Progress, Tooltip,
+  Row, Col, Progress, Tooltip, Modal, InputNumber, Space, message,
 } from 'antd';
 import {
   FileTextOutlined,
@@ -19,8 +19,10 @@ import {
   PieChartOutlined,
   WalletOutlined,
   DollarOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
-import { dashboardApi } from '../api/client';
+import { dashboardApi, authApi, invoiceApi } from '../api/client';
+import { getAccountPeriod } from '../lib/accountPeriod';
 import dayjs from 'dayjs';
 
 // 驾驶舱图表配色
@@ -61,6 +63,52 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabKey>('overdue');
+  const [messageApi, contextHolder] = message.useMessage();
+
+  // 账期设置弹窗
+  const [periodModalOpen, setPeriodModalOpen] = useState(false);
+  const [periodValue, setPeriodValue] = useState<number>(getAccountPeriod());
+  const [savingPeriod, setSavingPeriod] = useState(false);
+
+  const openPeriodModal = () => {
+    setPeriodValue(getAccountPeriod());
+    setPeriodModalOpen(true);
+  };
+
+  const handleSavePeriod = async () => {
+    if (!periodValue || periodValue < 1) {
+      messageApi.error('账期天数必须大于 0');
+      return;
+    }
+    setSavingPeriod(true);
+    try {
+      await authApi.updateAccountPeriod(periodValue);
+      const res = await invoiceApi.recomputePaymentDates();
+      messageApi.success(
+        `账期已更新为 ${periodValue} 天，已重新计算 ${res.data?.updated ?? 0} 张发票`,
+      );
+      setPeriodModalOpen(false);
+      // 刷新仪表盘数据
+      setLoading(true);
+      Promise.all([
+        dashboardApi.summary(),
+        dashboardApi.reminders(),
+        dashboardApi.recentInvoices(),
+        dashboardApi.recentSuppliers(),
+        dashboardApi.analytics(),
+      ]).then(([summaryRes, remindersRes, invoicesRes, suppliersRes, analyticsRes]) => {
+        setData(summaryRes.data);
+        setReminders(remindersRes.data);
+        setRecentInvoices(invoicesRes.data);
+        setRecentSuppliers(suppliersRes.data);
+        setAnalytics(analyticsRes.data);
+      }).finally(() => setLoading(false));
+    } catch (err: any) {
+      messageApi.error(err?.response?.data?.detail || '保存失败');
+    } finally {
+      setSavingPeriod(false);
+    }
+  };
 
   useEffect(() => {
     Promise.all([
@@ -149,6 +197,7 @@ export default function DashboardPage() {
 
   return (
     <div>
+      {contextHolder}
       {/* 页面标题 */}
       <div className="yb-page-header">
         <h2>仪表盘</h2>
@@ -206,23 +255,34 @@ export default function DashboardPage() {
 
         <div className="yb-stat-card">
           <div className="stat-main">
+            <div className="stat-label">
+              当前账期
+              <Button
+                type="link"
+                size="small"
+                icon={<SettingOutlined />}
+                onClick={openPeriodModal}
+                style={{ padding: 0, marginLeft: 8, fontSize: 13, height: 'auto' }}
+              >
+                设置
+              </Button>
+            </div>
+            <div className="stat-value">{getAccountPeriod()}<span style={{ fontSize: 16, marginLeft: 4, fontWeight: 400 }}>天</span></div>
+            <div className="stat-sub">付款日期 = 开票日期 + 账期</div>
+          </div>
+          <div className="stat-icon" style={{ background: '#f6ffed', color: '#52c41a' }}>
+            <CalendarOutlined />
+          </div>
+        </div>
+
+        <div className="yb-stat-card">
+          <div className="stat-main">
             <div className="stat-label">供应商数量</div>
             <div className="stat-value">{data.supplier_count}</div>
             <div className="stat-sub">合作供应商总数</div>
           </div>
           <div className="stat-icon" style={{ background: '#e6f4ff', color: '#1677ff' }}>
             <TeamOutlined />
-          </div>
-        </div>
-
-        <div className="yb-stat-card">
-          <div className="stat-main">
-            <div className="stat-label">待付合计</div>
-            <div className="stat-value">{data.total_payable.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-            <div className="stat-sub">未付款发票金额合计</div>
-          </div>
-          <div className="stat-icon" style={{ background: '#fff7e6', color: '#fa8c16' }}>
-            ¥
           </div>
         </div>
       </div>
@@ -485,6 +545,51 @@ export default function DashboardPage() {
           </Card>
         </Col>
       </Row>
+
+      {/* 账期设置弹窗 */}
+      <Modal
+        title="设置账期"
+        open={periodModalOpen}
+        onCancel={() => setPeriodModalOpen(false)}
+        onOk={handleSavePeriod}
+        confirmLoading={savingPeriod}
+        okText="保存"
+        cancelText="取消"
+        width={420}
+      >
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 13, color: '#666', marginBottom: 8 }}>当前账期：{getAccountPeriod()} 天</div>
+          <div style={{ fontSize: 13, color: '#999' }}>系统默认付款日期 = 开票日期 + 账期天数。保存后所有未付款发票会按新账期重新计算。</div>
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 13, color: '#666', marginBottom: 8 }}>快速选择</div>
+          <Space wrap>
+            {[30, 60, 90, 120, 150, 180].map((d) => (
+              <Button
+                key={d}
+                type={periodValue === d ? 'primary' : 'default'}
+                onClick={() => setPeriodValue(d)}
+                style={{ minWidth: 64 }}
+              >
+                {d} 天
+              </Button>
+            ))}
+          </Space>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: 13, color: '#666', whiteSpace: 'nowrap' }}>自定义天数</span>
+          <InputNumber
+            min={1}
+            max={365}
+            value={periodValue}
+            onChange={(v) => setPeriodValue(v ?? 90)}
+            addonAfter="天"
+            style={{ width: 160 }}
+          />
+        </div>
+      </Modal>
     </div>
   );
 }
