@@ -1,7 +1,8 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Card, Upload, Button, Statistic, message, Space, Empty, Progress,
+  Row, Col, Tag,
 } from 'antd';
 import type { UploadProps } from 'antd';
 import {
@@ -13,8 +14,10 @@ import {
   PlusOutlined,
   UnorderedListOutlined, TeamOutlined,
   DashboardOutlined,
+  ShopOutlined,
+  RightOutlined,
 } from '@ant-design/icons';
-import { invoiceApi } from '../api/client';
+import { invoiceApi, dashboardApi } from '../api/client';
 
 const { Dragger } = Upload;
 
@@ -28,6 +31,14 @@ export default function UploadPage() {
   // 整批进度用 ref 维护，避免闭包拿到旧的 state
   const batchRef = useRef<{ total: number; done: number }>({ total: 0, done: 0 });
   const resultRef = useRef<{ success: number; fail: number }>({ success: 0, fail: 0 });
+
+  const [recentInvoices, setRecentInvoices] = useState<any[]>([]);
+  const [recentSuppliers, setRecentSuppliers] = useState<any[]>([]);
+
+  useEffect(() => {
+    dashboardApi.recentInvoices().then((res) => setRecentInvoices(res.data || []));
+    dashboardApi.recentSuppliers().then((res) => setRecentSuppliers(res.data || []));
+  }, []);
 
   // 抓取整批文件总数（multiple 时 beforeUpload 最后一次 fileList 为全部文件）
   const beforeUpload: UploadProps['beforeUpload'] = (file, fileList) => {
@@ -205,6 +216,113 @@ export default function UploadPage() {
           </Card>
         </div>
       </div>
+
+      {/* 最近发票 + 最近供应商 */}
+      <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
+        {/* 最近发票 */}
+        <Col xs={24} lg={12}>
+          <Card
+            title={
+              <span>
+                <FileTextOutlined style={{ marginRight: 8 }} />
+                最近发票
+              </span>
+            }
+            extra={<a onClick={() => navigate('/invoice-list')}>查看全部 <RightOutlined /></a>}
+          >
+            <p style={{ fontSize: 13, color: '#999', marginBottom: 12 }}>最新添加的发票记录</p>
+            {recentInvoices.length > 0 ? (
+              <div>
+                {recentInvoices.map((inv: any) => (
+                  <div
+                    key={inv.id}
+                    className="yb-invoice-row"
+                    style={{ cursor: 'pointer', marginBottom: 8 }}
+                    onClick={() => navigate(`/invoice-list?id=${inv.id}`)}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
+                      <span style={{ fontSize: 20, flexShrink: 0 }}>{inv.image_data ? '📄' : '📋'}</span>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontWeight: 500, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {inv.invoice_no || '-'}
+                        </div>
+                        <div style={{ fontSize: 12, color: '#999', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {(inv.supplier_name || '').replace(/^(名称[：:\s]*)/, '')}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 8 }}>
+                      <div style={{ color: '#1677ff', fontWeight: 600, fontSize: 14 }}>
+                        {inv.total_amount?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                      <Tag
+                        color={inv.status === 'paid' ? 'green' : inv.status === 'overdue' ? 'red' : 'orange'}
+                        style={{ fontSize: 11, marginTop: 2 }}
+                      >
+                        {inv.status === 'paid' ? '已付款' : inv.status === 'overdue' ? '已逾期' : '待付款'}
+                      </Tag>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <Empty description="暂无发票" image={Empty.PRESENTED_IMAGE_SIMPLE} style={{ padding: '30px 0' }} />
+            )}
+          </Card>
+        </Col>
+
+        {/* 最近供应商 */}
+        <Col xs={24} lg={12}>
+          <Card
+            title={
+              <span>
+                <ShopOutlined style={{ marginRight: 8 }} />
+                最近供应商
+              </span>
+            }
+            extra={<a onClick={() => navigate('/supplier-list')}>查看全部 <RightOutlined /></a>}
+          >
+            <p style={{ fontSize: 13, color: '#999', marginBottom: 12 }}>最新添加的供应商信息</p>
+            {recentSuppliers.length > 0 ? (
+              <div>
+                {recentSuppliers.map((sup: any) => (
+                  <div
+                    key={sup.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '10px 0',
+                      borderBottom: '1px solid #f5f5f5',
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => navigate('/supplier-list')}
+                  >
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontWeight: 500, fontSize: 13, color: '#1677ff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {(sup.name || '').replace(/^(名称[：:\s]*)/, '')}
+                      </div>
+                      <div style={{ fontSize: 12, color: '#999', marginTop: 2 }}>
+                        {sup.tax_id || '-'}
+                      </div>
+                      {sup.contact_person && (
+                        <div style={{ fontSize: 12, color: '#1677ff', marginTop: 2 }}>
+                          联系人：{sup.contact_person}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ flexShrink: 0, marginLeft: 12, fontSize: 12, color: '#999' }}>
+                      {sup.created_at ? sup.created_at.slice(0, 10) : '-'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <Empty description="暂无供应商" image={Empty.PRESENTED_IMAGE_SIMPLE} style={{ padding: '30px 0' }} />
+            )}
+          </Card>
+        </Col>
+      </Row>
     </div>
   );
 }
