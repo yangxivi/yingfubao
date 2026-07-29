@@ -91,7 +91,7 @@ export default function UploadPage() {
         <p>支持批量上传发票图片，自动识别并提取发票信息</p>
       </div>
 
-      <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+      <div className="yb-upload-layout">
         {/* 左侧：上传区域 */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <Card bodyStyle={{ padding: 24 }}>
@@ -149,7 +149,7 @@ export default function UploadPage() {
         </div>
 
         {/* 右侧：处理统计 + 快捷操作 */}
-        <div style={{ width: 280, flexShrink: 0 }}>
+        <div className="yb-upload-side">
           {/* 处理统计 */}
           <Card title="📊 处理统计" size="small" style={{ marginBottom: 16 }}>
             <Space direction="vertical" style={{ width: '100%' }} size="middle">

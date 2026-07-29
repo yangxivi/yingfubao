@@ -205,7 +205,7 @@ export default function DashboardPage() {
       </div>
 
       {/* 第一行：金额总览 */}
-      <div className="yb-stat-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+      <div className="yb-stat-grid yb-stat-grid--3">
         <div className="yb-stat-card">
           <div className="stat-main">
             <div className="stat-label">总金额</div>
@@ -241,7 +241,7 @@ export default function DashboardPage() {
       </div>
 
       {/* 第二行：3个统计卡片 */}
-      <div className="yb-stat-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+      <div className="yb-stat-grid yb-stat-grid--3">
         <div className="yb-stat-card">
           <div className="stat-main">
             <div className="stat-label">总发票数</div>
@@ -288,7 +288,7 @@ export default function DashboardPage() {
       </div>
 
       {/* 第三行：状态统计 */}
-      <div className="yb-stat-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+      <div className="yb-stat-grid yb-stat-grid--3">
         <div className="yb-stat-card stat-success">
           <div className="stat-main">
             <div className="stat-label">已付款</div>

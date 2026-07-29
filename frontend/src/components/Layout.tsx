@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Button, Avatar, Dropdown, theme, message, Modal } from 'antd';
+import { Button, Avatar, Dropdown, theme, message, Modal, Drawer } from 'antd';
 import {
   DashboardOutlined,
   FileTextOutlined,
@@ -12,6 +12,7 @@ import {
   DownloadOutlined,
   ImportOutlined,
   UpOutlined,
+  MenuOutlined,
 } from '@ant-design/icons';
 import { getCurrentUserId, clearSession, getAuthMode } from '../lib/auth';
 import { exportUserBackup, importUserBackup, isBackupFile } from '../lib/db';
@@ -32,6 +33,7 @@ export default function Layout() {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showWizard, setShowWizard] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const cloudStatus = getCloudStatus();
   const isLocal = getAuthMode() === 'local' || cloudStatus === 'uninitialized';
 
@@ -134,6 +136,14 @@ export default function Layout() {
           应付宝
         </div>
 
+        <button
+          className="yb-nav-toggle"
+          onClick={() => setMobileNavOpen(true)}
+          aria-label="打开导航菜单"
+        >
+          <MenuOutlined />
+        </button>
+
         <nav className="yb-nav-links">
           {navItems.map((item) => (
             <div
@@ -176,10 +186,10 @@ export default function Layout() {
             {isLocal ? '💾 本地模式' : '☁️ 云端同步'}
           </span>
 
-          <Button type="text" size="small" icon={<DownloadOutlined />} onClick={handleExport}>
+          <Button type="text" size="small" icon={<DownloadOutlined />} onClick={handleExport} className="yb-nav-hide-mobile">
             导出备份
           </Button>
-          <Button type="text" size="small" icon={<ImportOutlined />} onClick={handleImportClick}>
+          <Button type="text" size="small" icon={<ImportOutlined />} onClick={handleImportClick} className="yb-nav-hide-mobile">
             导入备份
           </Button>
           <input
@@ -199,7 +209,7 @@ export default function Layout() {
       </header>
 
       {/* 主内容区 */}
-      <main style={{ padding: '24px 32px 72px 32px', maxWidth: '1400px', margin: '0 auto' }}>
+      <main className="yb-main-content" style={{ padding: '24px 32px 72px 32px', maxWidth: '1400px', margin: '0 auto' }}>
         <Outlet />
       </main>
 
@@ -222,7 +232,7 @@ export default function Layout() {
         }}
       >
         <div style={{ flex: 1 }} />
-        <div style={{ color: '#999', fontSize: 13 }}>COPYRIGHT @ 应付宝 - 应付账款管理系统</div>
+        <div className="footer-copyright" style={{ color: '#999', fontSize: 13 }}>COPYRIGHT @ 应付宝 - 应付账款管理系统</div>
         <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end' }}>
           <Button
             type="text"
@@ -240,6 +250,27 @@ export default function Layout() {
         onClose={() => setShowWizard(false)}
         onSuccess={() => window.location.reload()}
       />
+
+      {/* 移动端导航抽屉 */}
+      <Drawer
+        title="导航菜单"
+        placement="left"
+        width={240}
+        open={mobileNavOpen}
+        onClose={() => setMobileNavOpen(false)}
+        bodyStyle={{ padding: 0 }}
+      >
+        {navItems.map((item) => (
+          <div
+            key={item.key}
+            className={`yb-drawer-nav-item ${activeKey === item.key ? 'active' : ''}`}
+            onClick={() => { setMobileNavOpen(false); navigate(item.key); }}
+          >
+            <span className="drawer-item-icon">{item.icon}</span>
+            {item.label}
+          </div>
+        ))}
+      </Drawer>
     </div>
   );
 }

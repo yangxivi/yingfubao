@@ -49,7 +49,8 @@ body {
 }
 
 .login-card {
-  width: 400px;
+  width: 90%;
+  max-width: 400px;
   padding: 40px;
   background: #fff;
   border-radius: 12px;
@@ -102,6 +103,11 @@ body {
 @media (max-width: 576px) {
   .yb-stat-grid { grid-template-columns: 1fr; }
 }
+
+/* 仪表盘统计排：桌面 3 列，平板 2 列，手机 1 列 */
+.yb-stat-grid--3 { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 1100px) { .yb-stat-grid--3 { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 640px) { .yb-stat-grid--3 { grid-template-columns: 1fr; } }
 
 .yb-stat-card {
   background: var(--yb-card-bg);
@@ -516,3 +522,94 @@ body {
   flex-direction: column;
   padding: 20px 24px !important;
 }
+
+/* ============================================================
+   响应式适配：平板（≤1024px）/ 手机（≤768px / ≤576px）
+   ============================================================ */
+
+/* Tab 切换条：内容超出时横向滚动，不挤压换行 */
+.yb-tab-bar {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.yb-tab-bar::-webkit-scrollbar { display: none; }
+
+/* 顶部导航：手机端隐藏横向链接，改由汉堡菜单 + 抽屉承载 */
+.yb-nav-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  font-size: 20px;
+  margin-left: 4px;
+  color: var(--yb-text-secondary);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+}
+
+@media (max-width: 768px) {
+  .yb-navbar { padding: 0 12px !important; }
+  .yb-nav-links { display: none !important; }
+  .yb-nav-toggle { display: inline-flex !important; }
+  .yb-nav-hide-mobile { display: none !important; }
+  /* 主内容区：缩小左右留白，避免手机端过窄 */
+  .yb-main-content { padding: 16px 12px 64px !important; }
+  /* 抽屉内导航项 */
+  .yb-drawer-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 8px;
+    font-size: 16px;
+    color: var(--yb-text);
+    border-bottom: 1px solid #f0f0f0;
+    cursor: pointer;
+  }
+  .yb-drawer-nav-item .drawer-item-icon { font-size: 18px; color: var(--yb-primary); }
+  .yb-drawer-nav-item.active { color: var(--yb-primary); font-weight: 600; }
+  .yb-drawer-nav-item.active .drawer-item-icon { color: var(--yb-primary); }
+}
+
+/* 上传页：手机端右侧统计/快捷操作改为整宽堆叠在下方 */
+.yb-upload-layout { display: flex; gap: 20px; align-items: flex-start; }
+.yb-upload-side { width: 280px; flex-shrink: 0; }
+
+/* 底部固定栏版权文案：手机端缩小字号防溢出 */
+.footer-copyright { font-size: 13px; }
+
+@media (max-width: 576px) {
+  .yb-page-header h2 { font-size: 19px; }
+  .yb-stat-card { padding: 16px 18px; }
+  .yb-stat-card .stat-value { font-size: 24px; }
+  .yb-stat-card .stat-icon { width: 38px; height: 38px; font-size: 18px; margin-left: 12px; }
+
+  /* 底部汇总栏：允许换行，缩小间距 */
+  .yb-summary-bar { flex-wrap: wrap; gap: 10px 20px; padding: 10px 14px; }
+  .yb-summary-item .summary-value { font-size: 16px; }
+
+  /* 筛选面板：放宽最小宽度，避免窄屏溢出 */
+  .yb-filter-group { min-width: 140px; }
+
+  /* 发票行：缩小内边距与字号，缩略图略缩 */
+  .yb-invoice-row { padding: 10px 12px; }
+  .yb-invoice-amount { font-size: 14px; }
+  .yb-invoice-thumb { width: 40px; height: 30px; font-size: 15px; margin-right: 10px; }
+
+  /* 上传页右侧堆叠为整宽 */
+  .yb-upload-layout { flex-direction: column; }
+  .yb-upload-side { width: 100% !important; }
+
+  /* 底部版权字号缩小，防止 320px 溢出 */
+  .footer-copyright { font-size: 11px !important; }
+
+  /* 卡片内边距收窄 */
+  .yb-card, .ant-card { padding: 16px 14px !important; }
+}
+
+/* 通用：antd Modal 在窄屏不超出视口 */
+.ant-modal { max-width: 92vw; }
+
