@@ -347,6 +347,30 @@ export const invoiceApi = {
       if (updated > 0) writeDB(db);
       return { updated };
     }),
+
+  // 按需加载单张发票图片（启动时 loadCloud 不拉取 image_data，避免首屏过重）
+  loadImage: (id: string) =>
+    guard<string>(async () => {
+      const userId = getUserId();
+      const db = readDB();
+      const inv = db.invoices.find((i) => i.id === id && i.userId === userId);
+      if (inv?.image_data) return inv.image_data;
+      if (getAuthMode() === 'cloud') {
+        const { data, error } = await supabase
+          .from('invoices')
+          .select('image_data')
+          .eq('id', id)
+          .eq('user_id', userId)
+          .maybeSingle();
+        if (error) throw new Error(error.message);
+        if (data?.image_data) {
+          // 回填本地缓存，避免重复拉取
+          inv && (inv.image_data = data.image_data);
+          return data.image_data as string;
+        }
+      }
+      return '';
+    }),
 };
 
 // ------- Suppliers -------

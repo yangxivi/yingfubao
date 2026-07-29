@@ -221,7 +221,8 @@ function syncToCloud() {
 }
 
 async function loadCloud(userId: string): Promise<DBShape> {
-  // 启动预热：仅拉取业务字段，不包含 image_data（base64 大图，UI 从不展示，且按需才需要）。
+  // 启动预热：仅拉取业务字段，不包含 image_data（base64 大图）。
+  // 列表通过 file_name 判断是否有附件，详情/预览时再通过 invoiceApi.loadImage 按需拉取 image_data。
   // 这能显著降低首次进入的数据下载量与耗时。
   const invoiceColumns = [
     'id', 'user_id', 'supplier_id', 'invoice_no', 'invoice_date', 'payment_date',
