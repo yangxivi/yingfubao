@@ -39,7 +39,8 @@ export default function SupplierListPage() {
     finally { setLoading(false); }
   };
 
-  useEffect(() => { fetchSuppliers(); }, []);
+  // 搜索 / 筛选状态变化即重新拉取（修复此前 setTimeout 闭包拿到旧值导致搜索失效）
+  useEffect(() => { fetchSuppliers(); }, [search, hasContactFilter]);
 
   const handleCreate = async (values: any) => {
     try {
@@ -214,7 +215,7 @@ export default function SupplierListPage() {
         <div className="yb-toolbar-left">
           <Input.Search
             placeholder="搜索公司名称、统一社会信用代码或联系人..."
-            onSearch={(v) => { setSearch(v); setTimeout(fetchSuppliers, 50); }}
+            onSearch={(v) => setSearch(v)}
             style={{ width: 320 }}
             allowClear
           />
@@ -223,7 +224,7 @@ export default function SupplierListPage() {
             allowClear
             style={{ width: 140 }}
             value={hasContactFilter || undefined}
-            onChange={(v) => { setHasContactFilter(v || ''); setTimeout(fetchSuppliers, 50); }}
+            onChange={(v) => setHasContactFilter(v || '')}
           >
             <Select.Option value="yes">有联系人</Select.Option>
             <Select.Option value="no">无联系人</Select.Option>
