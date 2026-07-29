@@ -17,6 +17,8 @@ import {
   ShopOutlined,
   RightOutlined,
   PieChartOutlined,
+  WalletOutlined,
+  DollarOutlined,
 } from '@ant-design/icons';
 import { dashboardApi } from '../api/client';
 import dayjs from 'dayjs';
@@ -153,7 +155,43 @@ export default function DashboardPage() {
         <p>发票管理系统总览</p>
       </div>
 
-      {/* 第一行：3个统计卡片 */}
+      {/* 第一行：金额总览 */}
+      <div className="yb-stat-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+        <div className="yb-stat-card">
+          <div className="stat-main">
+            <div className="stat-label">总金额</div>
+            <div className="stat-value">{data.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+            <div className="stat-sub">所有发票金额合计</div>
+          </div>
+          <div className="stat-icon" style={{ background: '#e6f4ff', color: '#1677ff' }}>
+            <WalletOutlined />
+          </div>
+        </div>
+
+        <div className="yb-stat-card">
+          <div className="stat-main">
+            <div className="stat-label">已付合计</div>
+            <div className="stat-value">{data.paid_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+            <div className="stat-sub">已付款发票金额合计</div>
+          </div>
+          <div className="stat-icon" style={{ background: '#f6ffed', color: '#52c41a' }}>
+            <CheckCircleOutlined />
+          </div>
+        </div>
+
+        <div className="yb-stat-card">
+          <div className="stat-main">
+            <div className="stat-label">待付合计</div>
+            <div className="stat-value">{data.total_payable.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+            <div className="stat-sub">未付款发票金额合计（含已逾期）</div>
+          </div>
+          <div className="stat-icon" style={{ background: '#fff7e6', color: '#fa8c16' }}>
+            <DollarOutlined />
+          </div>
+        </div>
+      </div>
+
+      {/* 第二行：3个统计卡片 */}
       <div className="yb-stat-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
         <div className="yb-stat-card">
           <div className="stat-main">
@@ -189,7 +227,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* 第二行：状态统计 */}
+      {/* 第三行：状态统计 */}
       <div className="yb-stat-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
         <div className="yb-stat-card stat-success">
           <div className="stat-main">
