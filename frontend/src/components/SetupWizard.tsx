@@ -173,7 +173,7 @@ export default function SetupWizard({ open, onClose, onSuccess }: SetupWizardPro
               description={
                 <ol style={{ margin: '8px 0 0 20px', padding: 0 }}>
                   <li>打开 <a href="https://supabase.com/dashboard" target="_blank" rel="noreferrer">Supabase Dashboard</a></li>
-                  <li>选择项目 <Tag color="blue">thtwtqrlrgmiitwjrhep</Tag></li>
+                  <li>选择项目 <Tag color="blue">dpbtqwfbprartiogydqg</Tag></li>
                   <li>左侧菜单点击 <strong>SQL Editor</strong></li>
                   <li>点击 <strong>New Query</strong></li>
                   <li>粘贴下方 SQL 并点击 <strong>Run</strong></li>

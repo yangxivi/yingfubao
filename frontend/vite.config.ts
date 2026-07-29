@@ -9,10 +9,10 @@ export default defineConfig({
   // publishable/annon key 设计为可公开嵌入前端，百度密钥仅在 Edge Function 服务端。
   define: {
     'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(
-      process.env.VITE_SUPABASE_URL || 'https://thtwtqrlrgmiitwjrhep.supabase.co',
+      process.env.VITE_SUPABASE_URL || 'https://dpbtqwfbprartiogydqg.supabase.co',
     ),
     'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(
-      process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_Pha3CoAGVuV80f5gszp0Yg_yt4Y4qpV',
+      process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_m6iKgdv8VRGdx1KXAzWpSQ_BCDocpl_',
     ),
   },
   plugins: [react()],
