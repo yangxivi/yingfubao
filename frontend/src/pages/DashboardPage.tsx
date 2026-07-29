@@ -85,7 +85,7 @@ export default function DashboardPage() {
       await authApi.updateAccountPeriod(periodValue);
       const res = await invoiceApi.recomputePaymentDates();
       messageApi.success(
-        `账期已更新为 ${periodValue} 天，已重新计算 ${res.data?.updated ?? 0} 张发票`,
+        `账期已更新为 ${periodValue} 天，已同步更新 ${res.data?.updated ?? 0} 张发票的付款日期与状态`,
       );
       setPeriodModalOpen(false);
       // 刷新仪表盘数据

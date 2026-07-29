@@ -329,22 +329,36 @@ export const invoiceApi = {
       return {};
     }),
 
-  // 账期变更后，重新计算所有未付款发票的付款日期
+  // 账期变更后，同步重新计算所有发票的付款日期与付款状态（不管当前是什么状态）
   recomputePaymentDates: () =>
-    guard(() => {
+    guard(async () => {
       const userId = getUserId();
       const db = readDB();
       const period = getAccountPeriod();
       let updated = 0;
       for (const inv of db.invoices) {
         if (inv.userId !== userId) continue;
-        if (inv.status === 'paid') continue; // 已付款不回溯
         if (!inv.invoice_date) continue;
+        // 所有发票（含已付款）统一按新账期重算付款日期
         inv.payment_date = addDays(inv.invoice_date, period);
         inv.payment_auto = true; // 重新计算后恢复为自动派生
+        // 同步重算付款状态：已付款保持不变；其余按新的付款日期是否过期判定 逾期 / 待付
+        if (inv.status !== 'paid') {
+          const pd = new Date(inv.payment_date + 'T00:00:00');
+          inv.status = pd < today() ? 'overdue' : 'pending';
+        }
         updated += 1;
       }
-      if (updated > 0) writeDB(db);
+      if (updated > 0) {
+        writeDB(db);
+        // 云端模式：同步更新 Supabase 记录，避免刷新后 loadCloud 拉回旧数据
+        if (getAuthMode() === 'cloud') {
+          for (const inv of db.invoices) {
+            if (inv.userId !== userId) continue;
+            try { await supabase.from('invoices').update(invoiceToRow(inv)).eq('id', inv.id); } catch { /* 静默失败 */ }
+          }
+        }
+      }
       return { updated };
     }),
 
