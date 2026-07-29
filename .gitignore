@@ -1,0 +1,30 @@
+# ----- Python -----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+*.db
+*.sqlite3
+.env
+*.log
+
+# ----- Backend uploads -----
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# ----- Node / Frontend -----
+node_modules/
+frontend/dist/
+npm-debug.log*
+yarn-error.log*
+*.tsbuildinfo
+
+# ----- OS -----
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ----- Temp -----
+install_deps.bat
