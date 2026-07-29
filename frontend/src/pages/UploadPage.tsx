@@ -104,7 +104,7 @@ export default function UploadPage() {
 
       <div className="yb-upload-layout">
         {/* 左侧：上传区域 */}
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="yb-upload-main">
           <Card bodyStyle={{ padding: 24 }}>
             <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
               <CloudUploadOutlined style={{ fontSize: 18, color: '#1677ff' }} />
@@ -114,6 +114,7 @@ export default function UploadPage() {
               支持 PNG、PNG 图片格式。文件大小不超过20MB，支持批量上传
             </p>
             <Dragger
+              className="yb-upload-dragger"
               customRequest={handleUpload}
               beforeUpload={beforeUpload}
               showUploadList={false}
@@ -218,7 +219,7 @@ export default function UploadPage() {
       </div>
 
       {/* 最近发票 + 最近供应商 */}
-      <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
+      <Row gutter={[16, 16]} style={{ marginTop: 24 }} className="yb-upload-recent-row">
         {/* 最近发票 */}
         <Col xs={24} lg={12}>
           <Card
