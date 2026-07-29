@@ -8,6 +8,8 @@ import type { Invoice, Supplier } from '../lib/db';
 import * as authLib from '../lib/auth';
 import { recognizeInvoice } from '../lib/ocr';
 import { getAccountPeriod } from '../lib/accountPeriod';
+import { getAuthMode } from '../lib/auth';
+import { supabase } from '../lib/supabase';
 import dayjs from 'dayjs';
 
 // ------- 错误处理：兼容 axios 风格 -------
@@ -299,11 +301,15 @@ export const invoiceApi = {
     }),
 
   delete: (id: string) =>
-    guard(() => {
+    guard(async () => {
       const userId = getUserId();
       const db = readDB();
       db.invoices = db.invoices.filter((i) => !(i.id === id && i.userId === userId));
       writeDB(db);
+      // 云端模式：同步删除 Supabase 记录，否则刷新后 loadCloud 会拉回旧数据
+      if (getAuthMode() === 'cloud') {
+        try { await supabase.from('invoices').delete().eq('id', id); } catch { /* 静默失败，本地已删 */ }
+      }
       return {};
     }),
 
@@ -404,7 +410,7 @@ export const supplierApi = {
     }),
 
   delete: (id: string) =>
-    guard(() => {
+    guard(async () => {
       const userId = getUserId();
       const db = readDB();
       // 仅删除供应商；关联发票保留在发票列表中，仅将 supplier_id 置空（避免发票凭空消失）
@@ -413,6 +419,10 @@ export const supplierApi = {
       );
       db.suppliers = db.suppliers.filter((s) => !(s.id === id && s.userId === userId));
       writeDB(db);
+      // 云端模式：同步删除 Supabase 记录
+      if (getAuthMode() === 'cloud') {
+        try { await supabase.from('suppliers').delete().eq('id', id); } catch { /* 静默失败 */ }
+      }
       return {};
     }),
 };
