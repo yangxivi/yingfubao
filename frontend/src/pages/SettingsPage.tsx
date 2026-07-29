@@ -45,7 +45,7 @@ export default function SettingsPage() {
           全局账期（会计账期天数）
         </Title>
         <Paragraph type="secondary" style={{ fontSize: 13 }}>
-          系统默认付款日期 = 开票日期 + 账期天数。修改账期后，所有「自动派生」且未付款的发票会按新账期重新计算付款日期，剩余天数也会随之更新。
+          系统默认付款日期 = 开票日期 + 账期天数。修改账期后，所有未付款的发票会按新账期重新计算付款日期，剩余天数也会随之更新。
         </Paragraph>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8 }}>
@@ -84,9 +84,9 @@ export default function SettingsPage() {
           message="哪些发票会被重新计算？"
           description={
             <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>
-              <li>付款日期为「自动派生」（未手动修改）的发票 → 按新账期重算</li>
-              <li>已手动修改付款日期的发票 → 保留原值，不受影响</li>
+              <li>未付款发票 → 按新账期重算付款日期</li>
               <li>已付款发票 → 不回溯，保留历史付款日期</li>
+              <li>如需单独保留某张发票的付款日期，可在发票详情中手动修改</li>
             </ul>
           }
         />
