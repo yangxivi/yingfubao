@@ -156,7 +156,6 @@ export default function UploadPage() {
               <Statistic
                 title="待处理"
                 value={stats.success + stats.fail + stats.skip}
-                suffix={stats.success + stats.fail + stats.skip > 0 ? '' : '0'}
                 valueStyle={{ fontSize: 22 }}
               />
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
