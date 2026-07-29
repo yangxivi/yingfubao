@@ -3,7 +3,7 @@
 // 业务错误抛出 { response: { data: { detail } } } 以兼容页面现有错误处理。
 // 数据存于浏览器 localStorage（db.ts），OCR 在浏览器用 Tesseract.js（ocr.ts），鉴权用 Web Crypto（auth.ts）。
 
-import { readDB, writeDB, nextId } from '../lib/db';
+import { readDB, writeDB, nextId, invoiceToRow } from '../lib/db';
 import type { Invoice, Supplier } from '../lib/db';
 import * as authLib from '../lib/auth';
 import { recognizeInvoice } from '../lib/ocr';
@@ -271,33 +271,41 @@ export const invoiceApi = {
     }),
 
   update: (id: string, data: any) =>
-    guard(() => {
+    guard(async () => {
       const userId = getUserId();
       const db = readDB();
-      const inv = db.invoices.find((i) => i.id === id && i.userId === userId);
-      if (!inv) fail('发票不存在');
+      const idx = db.invoices.findIndex((i) => i.id === id && i.userId === userId);
+      if (idx < 0) fail('发票不存在');
+      // 不可变更新：替换整个对象而非 mutate 原引用，避免缓存污染
+      const inv = db.invoices[idx];
       // 供应商处理
+      let newSupplierId = inv.supplier_id;
       if (data.supplier_name && !data.supplier_id) {
-        inv.supplier_id = ensureSupplier(userId, data.supplier_name, data.supplier_tax_id);
+        newSupplierId = ensureSupplier(userId, data.supplier_name, data.supplier_tax_id);
       } else if (data.supplier_id !== undefined) {
-        inv.supplier_id = data.supplier_id || null;
+        newSupplierId = data.supplier_id || null;
       }
       const fields = [
         'invoice_no', 'invoice_date', 'amount_excluding_tax', 'tax_amount', 'total_amount',
         'tax_rate', 'business_month', 'remark', 'buyer_name', 'buyer_tax_id',
         'seller_name', 'seller_tax_id', 'status', 'image_data',
       ];
+      const updated: Invoice = { ...inv, supplier_id: newSupplierId };
       for (const f of fields) {
-        if (data[f] !== undefined) (inv as any)[f] = data[f];
+        if (data[f] !== undefined) (updated as any)[f] = data[f];
       }
       if (data.payment_date !== undefined) {
-        inv.payment_date = data.payment_date || addDays(inv.invoice_date, getAccountPeriod());
-        // 用户显式填写付款日期 = 手动；留空 = 回到账期自动派生
-        inv.payment_auto = !!data.payment_date;
+        updated.payment_date = data.payment_date || addDays(updated.invoice_date, getAccountPeriod());
+        updated.payment_auto = !!data.payment_date;
       }
+      db.invoices[idx] = updated;
       writeDB(db);
+      // 云端模式：同步更新 Supabase 记录
+      if (getAuthMode() === 'cloud') {
+        try { await supabase.from('invoices').update(invoiceToRow(updated)).eq('id', id); } catch { /* 静默失败 */ }
+      }
       const suppliers = db.suppliers.filter((s) => s.userId === userId);
-      return decorate(inv, suppliers);
+      return decorate(updated, suppliers);
     }),
 
   delete: (id: string) =>

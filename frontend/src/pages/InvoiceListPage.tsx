@@ -178,7 +178,8 @@ export default function InvoiceListPage() {
         });
       }
       await invoiceApi.update(selectedInvoice.id, { image_data: base64 });
-      selectedInvoice.image_data = base64;
+      // 用函数式更新避免直接 mutate 引用
+      setSelectedInvoice((prev: any) => prev ? { ...prev, image_data: base64 } : prev);
       options.onSuccess?.({});
       message.success('发票图片已更新');
     } catch (err: any) {
@@ -666,9 +667,17 @@ function EditInvoiceForm({ selectedInvoice, onDone }: { selectedInvoice: any; on
       form={form}
       layout="vertical"
       initialValues={{
-        ...selectedInvoice,
+        // 只取表单实际拥有的字段，避免 image_data/raw_text/userId 等多余字段被提交写回
+        invoice_no: selectedInvoice.invoice_no,
+        business_month: selectedInvoice.business_month,
         invoice_date: selectedInvoice.invoice_date ? dayjs(selectedInvoice.invoice_date) : null,
         payment_date: selectedInvoice.payment_date ? dayjs(selectedInvoice.payment_date) : null,
+        amount_excluding_tax: selectedInvoice.amount_excluding_tax,
+        tax_amount: selectedInvoice.tax_amount,
+        total_amount: selectedInvoice.total_amount,
+        tax_rate: selectedInvoice.tax_rate,
+        status: selectedInvoice.status,
+        remark: selectedInvoice.remark,
       }}
       onFinish={handleFinish}
     >

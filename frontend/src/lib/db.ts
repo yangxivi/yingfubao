@@ -134,7 +134,7 @@ function rowToSupplier(r: any): Supplier {
   };
 }
 
-function invoiceToRow(i: Invoice): Record<string, unknown> {
+export function invoiceToRow(i: Invoice): Record<string, unknown> {
   return {
     id: i.id,
     user_id: i.userId,
