@@ -641,6 +641,23 @@ function EditInvoiceForm({ selectedInvoice, onDone }: { selectedInvoice: any; on
   const [form] = Form.useForm();
   const invoiceDate = Form.useWatch('invoice_date', form);
 
+  // selectedInvoice 变化时重置表单数据（Modal 未销毁时切换编辑对象）
+  useEffect(() => {
+    if (!selectedInvoice) return;
+    form.setFieldsValue({
+      invoice_no: selectedInvoice.invoice_no || '',
+      business_month: selectedInvoice.business_month || '',
+      invoice_date: selectedInvoice.invoice_date ? dayjs(selectedInvoice.invoice_date) : null,
+      payment_date: selectedInvoice.payment_date ? dayjs(selectedInvoice.payment_date) : null,
+      amount_excluding_tax: selectedInvoice.amount_excluding_tax,
+      tax_amount: selectedInvoice.tax_amount,
+      total_amount: selectedInvoice.total_amount,
+      tax_rate: selectedInvoice.tax_rate,
+      status: selectedInvoice.status || 'pending',
+      remark: selectedInvoice.remark || '',
+    });
+  }, [selectedInvoice?.id]); // 仅当编辑不同发票时重置
+
   // 开票日期变化时，自动计算付款日期 = 开票日期 + 全局账期天数
   useEffect(() => {
     if (invoiceDate && dayjs.isDayjs(invoiceDate)) {
