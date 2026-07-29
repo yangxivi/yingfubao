@@ -235,7 +235,7 @@ export default function DashboardPage() {
             <div className="stat-sub">未付款发票金额合计（含已逾期）</div>
           </div>
           <div className="stat-icon" style={{ background: '#fff7e6', color: '#fa8c16' }}>
-            <DollarOutlined />
+            ¥
           </div>
         </div>
       </div>
