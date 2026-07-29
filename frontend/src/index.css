@@ -574,9 +574,27 @@ body {
   .yb-drawer-nav-item.active .drawer-item-icon { color: var(--yb-primary); }
 }
 
-/* 上传页：手机端右侧统计/快捷操作改为整宽堆叠在下方 */
-.yb-upload-layout { display: flex; gap: 20px; align-items: flex-start; }
+/* 上传页：左右对齐、左侧上传区与右侧双卡片等高 */
+.yb-upload-layout { display: flex; gap: 20px; align-items: stretch; }
+.yb-upload-main { flex: 1; min-width: 0; display: flex; }
+.yb-upload-main > .ant-card { flex: 1; display: flex; flex-direction: column; }
+.yb-upload-main > .ant-card > .ant-card-body { flex: 1; display: flex; flex-direction: column; }
+.yb-upload-dragger { flex: 1; }
+.yb-upload-dragger,
+.yb-upload-dragger .ant-upload,
+.yb-upload-dragger .ant-upload-drag { height: 100%; }
+.yb-upload-dragger .ant-upload-drag {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 .yb-upload-side { width: 280px; flex-shrink: 0; }
+
+/* 上传页：最近发票/供应商卡片底部对齐 */
+.yb-upload-recent-row { align-items: stretch !important; }
+.yb-upload-recent-row > .ant-col { display: flex; }
+.yb-upload-recent-row .ant-card { flex: 1; display: flex; flex-direction: column; }
+.yb-upload-recent-row .ant-card > .ant-card-body { flex: 1; }
 
 /* 底部固定栏版权文案：手机端缩小字号防溢出 */
 .footer-copyright { font-size: 13px; }
