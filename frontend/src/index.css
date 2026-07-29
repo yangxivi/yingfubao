@@ -322,7 +322,7 @@ body {
   cursor: pointer;
 }
 
-.yb-invoice-row:hover { background: #fafafa; }
+.yb-invoice-row:hover { background: #f0f0f0; }
 .yb-invoice-row:last-child { border-bottom: none; }
 
 .yb-invoice-thumb {
@@ -496,7 +496,7 @@ body {
   transition: background 0.15s;
 }
 
-.yb-supplier-row:hover { background: #fafafa; }
+.yb-supplier-row:hover { background: #f0f0f0; }
 .yb-supplier-row:last-child { border-bottom: none; }
 
 /* ===== 通用覆盖 ===== */
@@ -509,6 +509,11 @@ body {
 
 .ant-table-tbody > tr > td {
   font-size: 13px !important;
+}
+
+.ant-table-tbody > tr.ant-table-row:hover > td,
+.ant-table-tbody > tr > td.ant-table-cell-row-hover {
+  background: #f0f0f0 !important;
 }
 
 .ant-card {
