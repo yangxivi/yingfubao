@@ -950,6 +950,7 @@ function StandardAgingTable({ invoices }: { invoices: any[] }) {
 // ===== ⑩ 月度结构堆叠条形（已付 / 待付 / 逾期） =====
 function MonthlyStackedBar({ invoices }: { invoices: any[] }) {
   const [hover, setHover] = useState<number | null>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
   const now = dayjs();
   const months: string[] = [];
   for (let i = 11; i >= 0; i--) months.push(now.subtract(i, 'month').format('YYYY-MM'));
@@ -969,11 +970,27 @@ function MonthlyStackedBar({ invoices }: { invoices: any[] }) {
     { key: 'overdue' as const, label: '已逾期', color: '#ff4d4f' },
     { key: 'paid' as const, label: '已付款', color: '#52c41a' },
   ];
+
+  const handleMove = (e: React.MouseEvent) => {
+    const rect = wrapRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const svgX = ((e.clientX - rect.left) / rect.width) * W;
+    const idx = Math.floor((svgX - padX) / cw);
+    if (idx >= 0 && idx < data.length) setHover(idx);
+    else setHover(null);
+  };
+
   if (data.every((d) => d.paid + d.pending + d.overdue === 0)) {
     return <Empty description="暂无数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
   }
+  const hovered = hover !== null ? data[hover] : null;
   return (
-    <div>
+    <div
+      ref={wrapRef}
+      style={{ position: 'relative' }}
+      onMouseMove={handleMove}
+      onMouseLeave={() => setHover(null)}
+    >
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
         {[0, 0.25, 0.5, 0.75, 1].map((g, i) => {
           const y = padY + g * chartH;
@@ -987,7 +1004,6 @@ function MonthlyStackedBar({ invoices }: { invoices: any[] }) {
         })}
         {data.map((d, i) => {
           const x = padX + cw * i + (cw - barW) / 2;
-          const total = d.paid + d.pending + d.overdue;
           let yCursor = padY + chartH;
           const rects = segs.map((s) => {
             const val = (d as any)[s.key];
@@ -998,7 +1014,7 @@ function MonthlyStackedBar({ invoices }: { invoices: any[] }) {
           });
           const hp = hover === i;
           return (
-            <g key={d.month} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} style={{ cursor: 'default' }}>
+            <g key={d.month} style={{ cursor: 'default' }}>
               <title>{`${d.month}\n待付 ¥${d.pending.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n逾期 ¥${d.overdue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n已付 ¥${d.paid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</title>
               {rects.map((r) => (
                 <rect key={r.key} x={x} y={r.y} width={barW} height={Math.max(r.h, 0.5)} fill={r.color} opacity={hover !== null && !hp ? 0.4 : 1} />
@@ -1008,7 +1024,7 @@ function MonthlyStackedBar({ invoices }: { invoices: any[] }) {
           );
         })}
         {hover !== null && (
-          <g>
+          <g pointerEvents="none">
             <rect x={padX + cw * hover} y={padY} width={cw} height={chartH} fill={CHART_BLUE} opacity={0.06} />
             <text x={padX + cw * hover + cw / 2} y={padY - 6} fontSize={11} fill={CHART_BLUE} textAnchor="middle" fontWeight={700}>
               {fmtMoney(data[hover].paid + data[hover].pending + data[hover].overdue)}
@@ -1016,6 +1032,31 @@ function MonthlyStackedBar({ invoices }: { invoices: any[] }) {
           </g>
         )}
       </svg>
+      {hovered && (
+        <div
+          style={{
+            position: 'absolute',
+            left: Math.min(Math.max(padX + cw * hover! + cw / 2, 80), W - 80),
+            top: padY + 8,
+            transform: 'translate(-50%, 0)',
+            background: 'rgba(0,0,0,0.78)',
+            color: '#fff',
+            padding: '8px 12px',
+            borderRadius: 6,
+            fontSize: 12,
+            lineHeight: 1.6,
+            pointerEvents: 'none',
+            zIndex: 2,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          <div style={{ fontWeight: 600 }}>{hovered.month}</div>
+          <div>已付 ¥{hovered.paid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+          <div>待付 ¥{hovered.pending.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+          <div>逾期 ¥{hovered.overdue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+          <div>合计 ¥{(hovered.paid + hovered.pending + hovered.overdue).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 4, flexWrap: 'wrap' }}>
         {segs.map((s) => (
           <span key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#666' }}>
