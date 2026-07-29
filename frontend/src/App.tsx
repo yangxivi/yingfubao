@@ -15,7 +15,6 @@ const InvoiceListPage = lazy(() => import('./pages/InvoiceListPage'));
 const SupplierListPage = lazy(() => import('./pages/SupplierListPage'));
 const RemindersPage = lazy(() => import('./pages/RemindersPage'));
 const UploadPage = lazy(() => import('./pages/UploadPage'));
-const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const token = localStorage.getItem('token');
@@ -80,7 +79,6 @@ export default function App() {
           <Route path="invoice-list" element={<InvoiceListPage />} />
           <Route path="suppliers" element={<SupplierListPage />} />
           <Route path="reminders" element={<RemindersPage />} />
-          <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Routes>
     </Suspense>
