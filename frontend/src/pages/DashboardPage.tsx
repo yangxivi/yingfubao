@@ -245,7 +245,7 @@ export default function DashboardPage() {
         <div className="yb-stat-card">
           <div className="stat-main">
             <div className="stat-label">总发票数</div>
-            <div className="stat-value">{data.total_invoices}</div>
+            <div className="stat-value" style={{ color: '#1677ff' }}>{data.total_invoices}</div>
             <div className="stat-sub">系统中总的发票总数</div>
           </div>
           <div className="stat-icon" style={{ background: '#e6f4ff', color: '#1677ff' }}>
@@ -267,7 +267,7 @@ export default function DashboardPage() {
                 设置
               </Button>
             </div>
-            <div className="stat-value">{getAccountPeriod()}<span style={{ fontSize: 16, marginLeft: 4, fontWeight: 400 }}>天</span></div>
+            <div className="stat-value" style={{ color: '#ff4d4f' }}>{getAccountPeriod()}<span style={{ fontSize: 16, marginLeft: 4, fontWeight: 400 }}>天</span></div>
             <div className="stat-sub">付款日期 = 开票日期 + 账期</div>
           </div>
           <div className="stat-icon" style={{ background: '#f6ffed', color: '#52c41a' }}>
@@ -278,7 +278,7 @@ export default function DashboardPage() {
         <div className="yb-stat-card">
           <div className="stat-main">
             <div className="stat-label">供应商数量</div>
-            <div className="stat-value">{data.supplier_count}</div>
+            <div className="stat-value" style={{ color: '#722ed1' }}>{data.supplier_count}</div>
             <div className="stat-sub">合作供应商总数</div>
           </div>
           <div className="stat-icon" style={{ background: '#e6f4ff', color: '#1677ff' }}>
