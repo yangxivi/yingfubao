@@ -505,6 +505,10 @@ body {
 ::-webkit-scrollbar-thumb:hover { background: #bbb; }
 
 /* ===== 数据驾驶舱卡片对齐（不覆盖 antd Row 栅格系统） ===== */
+.cockpit-row {
+  align-items: stretch !important;
+}
+
 .cockpit-row .ant-col {
   display: flex;
 }
@@ -517,10 +521,11 @@ body {
   width: 100%;
 }
 
-.cockpit-card .ant-card-body {
+.cockpit-card > .ant-card-body {
   flex: 1;
   display: flex;
   flex-direction: column;
+  min-height: 0;
   padding: 20px 24px !important;
 }
 
