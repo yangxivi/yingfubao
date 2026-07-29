@@ -22,6 +22,15 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function AppLoading() {
+  return (
+    <div className="yb-app-loading">
+      <Spin size="large" />
+      <p className="yb-app-loading-text">数据正在加载中</p>
+    </div>
+  );
+}
+
 export default function App() {
   const [ready, setReady] = useState(false);
 
@@ -66,11 +75,11 @@ export default function App() {
   }, []);
 
   if (!ready) {
-    return <Spin size="large" style={{ display: 'block', margin: '160px auto' }} />;
+    return <AppLoading />;
   }
 
   return (
-    <Suspense fallback={<Spin size="large" style={{ display: 'block', margin: '160px auto' }} />}>
+    <Suspense fallback={<AppLoading />}>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
