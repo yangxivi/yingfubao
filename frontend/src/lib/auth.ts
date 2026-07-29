@@ -368,6 +368,28 @@ export async function loginUser(data: {
         authMode = 'local';
         return localLogin(data);
       }
+      // 云端无此账号，但本地（localStorage）有 → 自动把本地账号迁入云端并重试登录，
+      // 之后 initUserDB 内的 migrateLocalIfNeeded 会把本地发票/供应商一并同步上云。
+      if (msg.includes('用户名或密码错误')) {
+        const local = readLocalUsers().find((u) => u.username === data.username);
+        if (local && (await verifyPassword(data.password, local.passwordHash))) {
+          try {
+            const { error } = await supabase.from('users').insert({
+              id: local.id,
+              username: local.username,
+              password_hash: local.passwordHash,
+              company_name: local.company_name,
+              email: local.email,
+              account_period: local.account_period,
+            });
+            if (!error) {
+              return await cloudLogin(data);
+            }
+          } catch {
+            /* 落到下方继续抛错 */
+          }
+        }
+      }
       throw e;
     }
   }
