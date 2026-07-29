@@ -154,8 +154,8 @@ export default function DashboardPage() {
         <p>发票管理系统总览</p>
       </div>
 
-      {/* 第一行：4个统计卡片 */}
-      <div className="yb-stat-grid">
+      {/* 第一行：3个统计卡片 */}
+      <div className="yb-stat-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
         <div className="yb-stat-card">
           <div className="stat-main">
             <div className="stat-label">总发票数</div>
@@ -186,17 +186,6 @@ export default function DashboardPage() {
           </div>
           <div className="stat-icon" style={{ background: '#fff7e6', color: '#fa8c16' }}>
             <DollarOutlined />
-          </div>
-        </div>
-
-        <div className="yb-stat-card">
-          <div className="stat-main">
-            <div className="stat-label">待处理</div>
-            <div className="stat-value" style={{ color: '#faad14' }}>{pendingCount + overdueCount}</div>
-            <div className="stat-sub">待付款发票数量</div>
-          </div>
-          <div className="stat-icon" style={{ background: '#fffbe6', color: '#faad14' }}>
-            <ClockCircleOutlined />
           </div>
         </div>
       </div>
