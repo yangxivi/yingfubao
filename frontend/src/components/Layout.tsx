@@ -222,7 +222,7 @@ export default function Layout() {
         }}
       >
         <div style={{ flex: 1 }} />
-        <div style={{ color: '#999', fontSize: 13 }}>COPYRIGHT @ 应付宝</div>
+        <div style={{ color: '#999', fontSize: 13 }}>COPYRIGHT @ 应付宝 - 应付账款管理系统</div>
         <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end' }}>
           <Button
             type="text"
