@@ -64,6 +64,11 @@ export interface DBShape {
   seq: { users: number; suppliers: number; invoices: number };
 }
 
+/** 清洗 OCR 误带入供应商名称的前缀，如「名称：西安 XX 公司」→「西安 XX 公司」 */
+export function normalizeSupplierName(name: string): string {
+  return (name || '').replace(/^(名称[：:\s]*)/, '').trim();
+}
+
 // 旧版 localStorage 的 key（迁移后清除）
 const LOCAL_KEY = 'yingfubao_db_v1';
 // 本地模式的数据 key（按 userId 隔离）

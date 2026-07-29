@@ -3,7 +3,7 @@
 // 业务错误抛出 { response: { data: { detail } } } 以兼容页面现有错误处理。
 // 数据存于浏览器 localStorage（db.ts），OCR 在浏览器用 Tesseract.js（ocr.ts），鉴权用 Web Crypto（auth.ts）。
 
-import { readDB, writeDB, nextId, invoiceToRow } from '../lib/db';
+import { readDB, writeDB, nextId, invoiceToRow, normalizeSupplierName } from '../lib/db';
 import type { Invoice, Supplier } from '../lib/db';
 import * as authLib from '../lib/auth';
 import { recognizeInvoice } from '../lib/ocr';
@@ -91,7 +91,7 @@ function decorate(inv: Invoice, suppliers: Supplier[]): any {
   }
   return {
     ...inv,
-    supplier_name: sup ? sup.name : inv.seller_name,
+    supplier_name: normalizeSupplierName(sup ? sup.name : inv.seller_name),
     supplier_tax_id: sup ? sup.tax_id : inv.seller_tax_id,
     status,
   };
@@ -99,7 +99,7 @@ function decorate(inv: Invoice, suppliers: Supplier[]): any {
 
 // 按名称查找或创建供应商（支持模糊匹配），返回 id（name 为空返回 null）
 function ensureSupplier(userId: string, name?: string, taxId?: string): string | null {
-  const nm = (name || '').trim();
+  const nm = normalizeSupplierName(name || '');
   if (!nm) return null;
   const db = readDB();
 
@@ -395,9 +395,9 @@ export const supplierApi = {
       const db = readDB();
       let list = db.suppliers.filter((s) => s.userId === userId);
       if (params?.search) {
-        const q = String(params.search).toLowerCase();
+        const q = normalizeSupplierName(String(params.search)).toLowerCase();
         list = list.filter(
-          (s) => s.name.toLowerCase().includes(q) || s.tax_id.toLowerCase().includes(q),
+          (s) => normalizeSupplierName(s.name).toLowerCase().includes(q) || s.tax_id.toLowerCase().includes(q),
         );
       }
       // 计算发票数与累计金额
@@ -406,6 +406,7 @@ export const supplierApi = {
         const related = invoices.filter((i) => i.supplier_id === s.id);
         return {
           ...s,
+          name: normalizeSupplierName(s.name),
           invoice_count: related.length,
           total_amount: Math.round(related.reduce((sum, i) => sum + (i.total_amount || 0), 0) * 100) / 100,
         };
@@ -417,22 +418,22 @@ export const supplierApi = {
     guard(() => {
       const userId = getUserId();
       const db = readDB();
-      const nm = (data.name || '').trim();
+      const nm = normalizeSupplierName(data.name || '');
       // 去重：同名供应商已存在则复用并补全字段，避免重复创建
-      const existing = db.suppliers.find((s) => s.userId === userId && s.name.trim() === nm);
+      const existing = db.suppliers.find((s) => s.userId === userId && normalizeSupplierName(s.name) === nm);
       if (existing) {
         if (data.tax_id && !existing.tax_id) existing.tax_id = data.tax_id;
         if (data.contact_person && !existing.contact_person) existing.contact_person = data.contact_person;
         if (data.phone && !existing.phone) existing.phone = data.phone;
         if (data.address && !existing.address) existing.address = data.address;
         writeDB(db);
-        return existing;
+        return { ...existing, name: normalizeSupplierName(existing.name) };
       }
       const id = nextId(db, 'suppliers');
       const sup: Supplier = {
         id,
         userId,
-        name: data.name || '',
+        name: nm,
         tax_id: data.tax_id || '',
         contact_person: data.contact_person || '',
         phone: data.phone || '',
@@ -454,13 +455,14 @@ export const supplierApi = {
       const sup = db.suppliers.find((s) => s.id === id && s.userId === userId);
       if (!sup) fail('供应商不存在');
       const fields = [
-        'name', 'tax_id', 'contact_person', 'phone', 'address', 'bank_name', 'bank_account', 'notes',
+        'tax_id', 'contact_person', 'phone', 'address', 'bank_name', 'bank_account', 'notes',
       ];
+      if (data.name !== undefined) sup.name = normalizeSupplierName(data.name);
       for (const f of fields) {
         if (data[f] !== undefined) (sup as any)[f] = data[f];
       }
       writeDB(db);
-      return sup;
+      return { ...sup, name: normalizeSupplierName(sup.name) };
     }),
 
   delete: (id: string) =>
