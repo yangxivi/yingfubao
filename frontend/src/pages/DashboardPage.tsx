@@ -383,7 +383,7 @@ export default function DashboardPage() {
                         color={inv.status === 'paid' ? 'green' : inv.status === 'overdue' ? 'red' : 'orange'}
                         style={{ fontSize: 11, marginTop: 2 }}
                       >
-                        {inv.status === 'paid' ? '已付' : inv.status === 'overdue' ? '已逾期' : '待付款'}
+                        {inv.status === 'paid' ? '已付款' : inv.status === 'overdue' ? '已逾期' : '待付款'}
                       </Tag>
                     </div>
                   </div>
@@ -776,7 +776,7 @@ function MonthlyRate({ data }: { data: { ratio: number; paid: number; due: numbe
       title={
         <div style={{ lineHeight: 1.8 }}>
           <div>本月完成率 <b>{data.ratio}%</b></div>
-          <div>已付 ¥{data.paid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+          <div>已付款 ¥{data.paid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
           <div>本月应付 ¥{data.due.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
           <div style={{ borderTop: '1px solid rgba(255,255,255,0.25)', marginTop: 4, paddingTop: 4 }}>累计完成率 {data.overallRatio}%</div>
         </div>
@@ -791,7 +791,7 @@ function MonthlyRate({ data }: { data: { ratio: number; paid: number; due: numbe
           format={(p) => `${p}%`}
         />
       <div style={{ fontSize: 13, color: '#999', marginTop: 10, textAlign: 'center', lineHeight: 1.8 }}>
-        <div>已付 <span style={{ color: '#52c41a', fontWeight: 600 }}>¥{data.paid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+        <div>已付款 <span style={{ color: '#52c41a', fontWeight: 600 }}>¥{data.paid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
         <div>本月应付 <span style={{ fontWeight: 600 }}>¥{data.due.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
       </div>
       <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #f0f0f0', width: '80%', textAlign: 'center' }}>
