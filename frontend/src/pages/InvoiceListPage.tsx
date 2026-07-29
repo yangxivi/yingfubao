@@ -8,7 +8,7 @@ import {
   SearchOutlined, DeleteOutlined, EditOutlined,
   EyeOutlined, PlusOutlined, DownloadOutlined,
   PictureOutlined, FilterOutlined, ExportOutlined,
-  FileTextOutlined, CloseCircleOutlined,
+  FileTextOutlined, CloseCircleOutlined, CheckCircleOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type { TableRowSelection as AntTableRowSelection } from 'antd/es/table/interface';
@@ -27,7 +27,7 @@ export default function InvoiceListPage() {
   const [selectedInvoice, setSelectedInvoice] = useState<any>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
-  const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
+  const [pagination, setPagination] = useState({ current: 1, pageSize: 100, total: 0 });
 
   // 多选
   const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
@@ -115,6 +115,23 @@ export default function InvoiceListPage() {
       message.error(err.response?.data?.detail || '批量删除失败');
     } finally {
       setBatchDeleting(false);
+    }
+  };
+
+  // 批量标记已付款
+  const [batchMarkingPaid, setBatchMarkingPaid] = useState(false);
+  const handleBatchMarkPaid = async () => {
+    if (selectedRowKeys.length === 0) return;
+    setBatchMarkingPaid(true);
+    try {
+      await Promise.all(selectedRowKeys.map((id) => invoiceApi.update(id, { status: 'paid' })));
+      message.success(`已将 ${selectedRowKeys.length} 条发票标记为已付款`);
+      setSelectedRowKeys([]);
+      fetchInvoices();
+    } catch (err: any) {
+      message.error(err.response?.data?.detail || '批量标记已付款失败');
+    } finally {
+      setBatchMarkingPaid(false);
     }
   };
 
@@ -287,7 +304,7 @@ export default function InvoiceListPage() {
       key: 'status',
       width: 90,
       render: (s: string) => {
-        const map: any = { pending: { color: 'orange', text: '待付款' }, paid: { color: 'green', text: '已付' }, overdue: { color: 'red', text: '已逾期' } };
+        const map: any = { pending: { color: 'orange', text: '待付款' }, paid: { color: 'green', text: '已付款' }, overdue: { color: 'red', text: '已逾期' } };
         const info = map[s] || { color: 'default', text: s };
         return <Tag color={info.color}>{info.text}</Tag>;
       },
@@ -319,8 +336,8 @@ export default function InvoiceListPage() {
           <Tooltip title="查看"><Button type="text" size="small" icon={<EyeOutlined />} onClick={() => { setSelectedInvoice(record); setDetailOpen(true); }} /></Tooltip>
           <Tooltip title="编辑"><Button type="text" size="small" icon={<EditOutlined />} onClick={() => { setSelectedInvoice(record); setEditOpen(true); }} /></Tooltip>
           {record.status !== 'paid' && (
-            <Popconfirm title="确认已付款?" onConfirm={() => handleMarkPaid(record.id)}>
-              <Button type="text" size="small" style={{ color: '#52c41a' }}>已付</Button>
+            <Popconfirm title="确认标记为已付款?" onConfirm={() => handleMarkPaid(record.id)}>
+              <Button type="text" size="small" style={{ color: '#52c41a' }}>已付款</Button>
             </Popconfirm>
           )}
           <Popconfirm title="确认删除?" onConfirm={() => handleDelete(record.id)}>
@@ -366,7 +383,7 @@ export default function InvoiceListPage() {
             onChange={(v) => { setStatusFilter(v || ''); setPagination((p) => ({ ...p, current: 1 })); }}
           >
             <Select.Option value="pending">待付款</Select.Option>
-            <Select.Option value="paid">已付</Select.Option>
+            <Select.Option value="paid">已付款</Select.Option>
             <Select.Option value="overdue">已逾期</Select.Option>
           </Select>
         </div>
@@ -501,18 +518,30 @@ export default function InvoiceListPage() {
             <Statistic title="选中数量" value={selectedSummary.count} suffix="条" style={{ fontSize: 14 }} valueStyle={{ fontSize: 16, fontWeight: 600 }} />
             <Statistic title="合计金额" value={selectedSummary.totalAmount} prefix="¥" precision={2} style={{ fontSize: 14 }} valueStyle={{ color: '#cf1322', fontWeight: 600, fontSize: 16 }} />
             <div style={{ marginLeft: 'auto' }}>
-              <Popconfirm
-                title={`确认删除选中的 ${selectedRowKeys.length} 条发票？`}
-                description="删除后不可恢复"
-                onConfirm={handleBatchDelete}
-                okText="确认删除"
-                cancelText="取消"
-                okButtonProps={{ danger: true }}
-              >
-                <Button danger icon={<DeleteOutlined />} loading={batchDeleting}>
-                  批量删除（{selectedRowKeys.length}）
-                </Button>
-              </Popconfirm>
+              <Space>
+                <Popconfirm
+                  title={`确认将选中的 ${selectedRowKeys.length} 条发票标记为已付款？`}
+                  onConfirm={handleBatchMarkPaid}
+                  okText="确认标记"
+                  cancelText="取消"
+                >
+                  <Button type="primary" icon={<CheckCircleOutlined />} loading={batchMarkingPaid}>
+                    批量标记已付款（{selectedRowKeys.length}）
+                  </Button>
+                </Popconfirm>
+                <Popconfirm
+                  title={`确认删除选中的 ${selectedRowKeys.length} 条发票？`}
+                  description="删除后不可恢复"
+                  onConfirm={handleBatchDelete}
+                  okText="确认删除"
+                  cancelText="取消"
+                  okButtonProps={{ danger: true }}
+                >
+                  <Button danger icon={<DeleteOutlined />} loading={batchDeleting}>
+                    批量删除（{selectedRowKeys.length}）
+                  </Button>
+                </Popconfirm>
+              </Space>
             </div>
           </div>
         )}
@@ -544,6 +573,10 @@ export default function InvoiceListPage() {
             <div className="summary-value">{globalSummary.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
           </div>
           <div className="yb-summary-item summary-success">
+            <div className="summary-label">已付款</div>
+            <div className="summary-value">{globalSummary.paidCount}</div>
+          </div>
+          <div className="yb-summary-item summary-warning">
             <div className="summary-label">待付款</div>
             <div className="summary-value">{globalSummary.pendingCount}</div>
           </div>

@@ -284,7 +284,7 @@ export default function SupplierListPage() {
           rowSelection={rowSelection}
           loading={loading}
           size="middle"
-          pagination={{ showTotal: (total) => `共 ${total} 家` }}
+          pagination={{ defaultPageSize: 100, showSizeChanger: true, showTotal: (total) => `共 ${total} 家` }}
           scroll={{ x: 1000 }}
         />
 
