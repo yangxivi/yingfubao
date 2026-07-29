@@ -515,8 +515,14 @@ export default function InvoiceListPage() {
             >
               全选（{selectedRowKeys.length}/{invoices.length}）
             </Checkbox>
-            <Statistic title="选中数量" value={selectedSummary.count} suffix="条" style={{ fontSize: 14 }} valueStyle={{ fontSize: 16, fontWeight: 600 }} />
-            <Statistic title="合计金额" value={selectedSummary.totalAmount} prefix="¥" precision={2} style={{ fontSize: 14 }} valueStyle={{ color: '#cf1322', fontWeight: 600, fontSize: 16 }} />
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+              <span style={{ color: '#666', fontSize: 14 }}>选中数量</span>
+              <span style={{ fontSize: 16, fontWeight: 600 }}>{selectedSummary.count} 条</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+              <span style={{ color: '#666', fontSize: 14 }}>合计金额</span>
+              <span style={{ color: '#cf1322', fontSize: 16, fontWeight: 600 }}>¥{selectedSummary.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            </div>
             <div style={{ marginLeft: 'auto' }}>
               <Space>
                 <Popconfirm
