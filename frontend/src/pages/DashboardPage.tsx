@@ -1176,31 +1176,40 @@ function PaymentCalendarHeatmap({ invoices }: { invoices: any[] }) {
     return '#fff1f0';
   };
   const weekdays = ['一', '二', '三', '四', '五', '六', '日'];
-  const cellsByWeek: { date: any; amount: number; count: number }[][] = [];
-  for (let w = 0; w < weeks; w++) {
-    const col: { date: any; amount: number; count: number }[] = [];
-    for (let d = 0; d < 7; d++) {
+  // 按 星期(行) x 周(列) 组织，方便 CSS Grid 平铺
+  const cellsByDay: { date: any; amount: number; count: number }[][] = [];
+  for (let d = 0; d < 7; d++) {
+    const row: { date: any; amount: number; count: number }[] = [];
+    for (let w = 0; w < weeks; w++) {
       const date = firstDay.add(w * 7 + d, 'day');
       const info = map.get(date.format('YYYY-MM-DD'));
-      col.push({ date, amount: info?.amount || 0, count: info?.count || 0 });
+      row.push({ date, amount: info?.amount || 0, count: info?.count || 0 });
     }
-    cellsByWeek.push(col);
+    cellsByDay.push(row);
   }
   return (
     <div>
       <div style={{ overflowX: 'auto', paddingBottom: 4 }}>
-        <div style={{ display: 'flex', gap: 4, minWidth: 330 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginRight: 2, justifyContent: 'space-between', padding: '2px 0' }}>
-            {weekdays.map((d) => (
-              <div key={d} style={{ fontSize: 10, color: '#999', height: 18, lineHeight: '18px', width: 14, textAlign: 'center' }}>{d}</div>
-            ))}
-          </div>
-          {cellsByWeek.map((col, wi) => (
-            <div key={wi} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {col.map((cell, di) => {
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: '18px repeat(13, 1fr)',
+          gap: 4,
+          minWidth: 280,
+        }}>
+          {/* 左上角占位 */}
+          <div />
+          {Array.from({ length: weeks }).map((_, wi) => (
+            <div key={wi} style={{ fontSize: 10, color: '#999', textAlign: 'center', lineHeight: '18px' }}>
+              {firstDay.add(wi * 7, 'day').format('MM/DD')}
+            </div>
+          ))}
+          {cellsByDay.map((row, di) => (
+            <>
+              <div key={`h${di}`} style={{ fontSize: 10, color: '#999', lineHeight: '18px', textAlign: 'center' }}>{weekdays[di]}</div>
+              {row.map((cell, wi) => {
                 const isToday = cell.date.isSame(today, 'day');
                 return (
-                  <Tooltip key={di} title={
+                  <Tooltip key={wi} title={
                     <div style={{ lineHeight: 1.7 }}>
                       <div>{cell.date.format('YYYY-MM-DD')}{isToday ? '（今天）' : ''}</div>
                       <div>待付 ¥{cell.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
@@ -1208,14 +1217,14 @@ function PaymentCalendarHeatmap({ invoices }: { invoices: any[] }) {
                     </div>
                   }>
                     <div style={{
-                      width: 18, height: 18, borderRadius: 3, background: colorOf(cell.amount),
+                      width: '100%', aspectRatio: '1 / 1', borderRadius: 3, background: colorOf(cell.amount),
                       border: isToday ? '2px solid #1677ff' : '1px solid rgba(0,0,0,0.04)',
-                      boxSizing: 'border-box', cursor: 'default',
+                      boxSizing: 'border-box', cursor: 'default', minWidth: 14,
                     }} />
                   </Tooltip>
                 );
               })}
-            </div>
+            </>
           ))}
         </div>
       </div>
