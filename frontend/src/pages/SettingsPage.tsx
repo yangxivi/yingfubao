@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Card, InputNumber, Button, message, Alert, Space, Typography, Divider, Tag } from 'antd';
 import { authApi, invoiceApi } from '../api/client';
 import { getAccountPeriod } from '../lib/accountPeriod';
@@ -11,8 +11,9 @@ export default function SettingsPage() {
   const [period, setPeriod] = useState<number>(getAccountPeriod());
   const [saving, setSaving] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
+  const initialPeriod = useRef<number>(getAccountPeriod());
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!period || period < 1) {
       messageApi.error('账期天数必须大于 0');
       return;
@@ -22,15 +23,29 @@ export default function SettingsPage() {
       await authApi.updateAccountPeriod(period);
       const res = await invoiceApi.recomputePaymentDates();
       const updated = res.data?.updated ?? 0;
+      initialPeriod.current = period;
       messageApi.success(
-        `账期已更新为 ${period} 天，已重新计算 ${updated} 张自动派生付款日期的发票`,
+        `账期已更新为 ${period} 天，已重新计算 ${updated} 张发票`,
       );
     } catch (err: any) {
       messageApi.error(err?.response?.data?.detail || '保存失败');
     } finally {
       setSaving(false);
     }
-  };
+  }, [period, messageApi]);
+
+  const handleSaveRef = useRef(handleSave);
+  useEffect(() => {
+    handleSaveRef.current = handleSave;
+  }, [handleSave]);
+
+  // 账期变化后自动保存并重新计算所有未付款发票
+  useEffect(() => {
+    if (period === initialPeriod.current) return;
+    if (!period || period < 1) return;
+    const timer = setTimeout(() => handleSaveRef.current(), 1000);
+    return () => clearTimeout(timer);
+  }, [period]);
 
   return (
     <div>
@@ -94,7 +109,7 @@ export default function SettingsPage() {
         <Divider />
         <Space>
           <Button type="primary" loading={saving} onClick={handleSave}>
-            保存并重新计算
+            立即重新计算
           </Button>
         </Space>
       </Card>
