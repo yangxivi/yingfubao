@@ -39,6 +39,24 @@ body {
   min-height: 100vh;
 }
 
+/* ===== 全屏加载（启动预热 / 路由懒加载） ===== */
+.yb-app-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  width: 100%;
+  gap: 16px;
+}
+
+.yb-app-loading-text {
+  margin: 0;
+  font-size: 14px;
+  color: var(--yb-text-hint);
+  letter-spacing: 0.5px;
+}
+
 /* ===== 登录页 ===== */
 .login-container {
   display: flex;
