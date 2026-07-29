@@ -258,11 +258,13 @@ body {
   margin-bottom: 16px;
   background: var(--yb-card-bg);
   border-radius: var(--yb-radius) var(--yb-radius) 0 0;
-  padding: 0 16px;
+  padding: 0;
 }
 
 .yb-tab {
-  padding: 12px 20px;
+  flex: 1 1 0;
+  justify-content: center;
+  padding: 12px 8px;
   font-size: 14px;
   color: var(--yb-text-secondary);
   cursor: pointer;
@@ -272,6 +274,8 @@ body {
   align-items: center;
   gap: 6px;
   user-select: none;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .yb-tab:hover { color: var(--yb-primary); }
@@ -578,6 +582,8 @@ body {
   .yb-drawer-nav-item .drawer-item-icon { font-size: 18px; color: var(--yb-primary); }
   .yb-drawer-nav-item.active { color: var(--yb-primary); font-weight: 600; }
   .yb-drawer-nav-item.active .drawer-item-icon { color: var(--yb-primary); }
+  /* Tab 标签在手机端恢复自动宽度，保证横向滚动不挤压 */
+  .yb-tab { flex: 0 0 auto; padding: 12px 16px; min-width: auto; }
 }
 
 /* 上传页：左右对齐、左侧上传区与右侧双卡片等高 */
