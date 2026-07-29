@@ -35,6 +35,18 @@ const SUPPLIER_COLORS = ['#1677ff', '#13c2c2', '#722ed1', '#fa8c16', '#eb2f96'];
 const CHART_BLUE = '#1677ff';
 const CHART_RED = '#ff4d4f';
 
+// 金额格式化
+function fmtMoney(v: number): string {
+  const rounded = Math.round((v || 0) * 100) / 100;
+  return '¥' + rounded.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function fmtShort(v: number): string {
+  const a = Math.abs(v);
+  if (a >= 100000000) return (v / 100000000).toFixed(1) + '亿';
+  if (a >= 10000) return (v / 10000).toFixed(1) + '万';
+  return Math.round(v).toString();
+}
+
 // 生成月度趋势的面积/折线 path（viewBox 坐标系）
 function buildTrendPaths(data: { amount: number }[]) {
   const w = 640;
@@ -60,6 +72,7 @@ export default function DashboardPage() {
   const [recentInvoices, setRecentInvoices] = useState<any[]>([]);
   const [recentSuppliers, setRecentSuppliers] = useState<any[]>([]);
   const [analytics, setAnalytics] = useState<any>(null);
+  const [allInvoices, setAllInvoices] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabKey>('overdue');
@@ -96,12 +109,14 @@ export default function DashboardPage() {
         dashboardApi.recentInvoices(),
         dashboardApi.recentSuppliers(),
         dashboardApi.analytics(),
-      ]).then(([summaryRes, remindersRes, invoicesRes, suppliersRes, analyticsRes]) => {
+        invoiceApi.list(),
+      ]).then(([summaryRes, remindersRes, invoicesRes, suppliersRes, analyticsRes, allRes]) => {
         setData(summaryRes.data);
         setReminders(remindersRes.data);
         setRecentInvoices(invoicesRes.data);
         setRecentSuppliers(suppliersRes.data);
         setAnalytics(analyticsRes.data);
+        setAllInvoices(allRes.data);
       }).finally(() => setLoading(false));
     } catch (err: any) {
       messageApi.error(err?.response?.data?.detail || '保存失败');
@@ -117,12 +132,14 @@ export default function DashboardPage() {
       dashboardApi.recentInvoices(),
       dashboardApi.recentSuppliers(),
       dashboardApi.analytics(),
-    ]).then(([summaryRes, remindersRes, invoicesRes, suppliersRes, analyticsRes]) => {
+      invoiceApi.list(),
+    ]).then(([summaryRes, remindersRes, invoicesRes, suppliersRes, analyticsRes, allRes]) => {
       setData(summaryRes.data);
       setReminders(remindersRes.data);
       setRecentInvoices(invoicesRes.data);
       setRecentSuppliers(suppliersRes.data);
       setAnalytics(analyticsRes.data);
+      setAllInvoices(allRes.data);
     }).finally(() => setLoading(false));
   }, []);
 
@@ -373,6 +390,46 @@ export default function DashboardPage() {
               </Card>
             </Col>
           </Row>
+
+          {/* 深度分析：账龄 / 现金流 / 风险 / 结构 */}
+          <div style={{ marginTop: 24 }}>
+            <div className="yb-card-title" style={{ marginBottom: 12 }}>
+              <PieChartOutlined style={{ color: CHART_BLUE, marginRight: 8 }} />
+              深度分析
+              <span style={{ fontSize: 12, color: '#999', fontWeight: 400, marginLeft: 8 }}>账龄 · 现金流 · 风险 · 结构</span>
+            </div>
+            <Row gutter={[16, 16]}>
+              <Col xs={24} lg={12}>
+                <Card title="标准账龄分析" className="cockpit-card">
+                  <StandardAgingTable invoices={allInvoices} />
+                </Card>
+              </Col>
+
+              <Col xs={24} lg={12}>
+                <Card title="月度结构（已付 / 待付 / 逾期）" className="cockpit-card">
+                  <MonthlyStackedBar invoices={allInvoices} />
+                </Card>
+              </Col>
+
+              <Col xs={24} lg={12}>
+                <Card title="供应商应付款占比" className="cockpit-card">
+                  <SupplierTreemap invoices={allInvoices} />
+                </Card>
+              </Col>
+
+              <Col xs={24} lg={12}>
+                <Card title="未来 13 周付款日历" className="cockpit-card">
+                  <PaymentCalendarHeatmap invoices={allInvoices} />
+                </Card>
+              </Col>
+
+              <Col xs={24} lg={24}>
+                <Card title="风险预警面板" className="cockpit-card">
+                  <RiskAlertPanel invoices={allInvoices} navigate={navigate} />
+                </Card>
+              </Col>
+            </Row>
+          </div>
         </div>
       )}
 
@@ -946,5 +1003,365 @@ function MonthlyRate({ data }: { data: { ratio: number; paid: number; due: numbe
       </div>
       </div>
     </Tooltip>
+  );
+}
+
+/* ----------------- 深度分析图表子组件 ----------------- */
+
+// ===== ④ 标准账龄分析表 =====
+function StandardAgingTable({ invoices }: { invoices: any[] }) {
+  const today = dayjs();
+  const unpaid = (invoices || []).filter((i: any) => i.status !== 'paid' && i.payment_date);
+  const buckets = [
+    { label: '未到期', color: '#1677ff', test: (d: number) => d > 0 },
+    { label: '逾期 0-30天', color: '#fa8c16', test: (d: number) => d <= 0 && d >= -30 },
+    { label: '逾期 31-60天', color: '#fa541c', test: (d: number) => d <= -31 && d >= -60 },
+    { label: '逾期 61-90天', color: '#f5222d', test: (d: number) => d <= -61 && d >= -90 },
+    { label: '逾期 90天以上', color: '#a8071a', test: (d: number) => d <= -91 },
+  ];
+  const rows = buckets.map((b) => {
+    const items = unpaid.filter((i: any) => b.test(dayjs(i.payment_date).diff(today, 'day')));
+    const amount = Math.round(items.reduce((s: number, i: any) => s + (Number(i.total_amount) || 0), 0) * 100) / 100;
+    return { ...b, count: items.length, amount };
+  });
+  const totalAmt = Math.round(rows.reduce((s, r) => s + r.amount, 0) * 100) / 100;
+  const totalCnt = rows.reduce((s, r) => s + r.count, 0);
+  if (totalCnt === 0) return <Empty description="暂无未付发票" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
+  return (
+    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+      <thead>
+        <tr style={{ color: '#999', textAlign: 'right' }}>
+          <th style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 500 }}>账龄区间</th>
+          <th style={{ padding: '6px 8px', fontWeight: 500 }}>发票数</th>
+          <th style={{ padding: '6px 8px', fontWeight: 500 }}>金额</th>
+          <th style={{ textAlign: 'left', padding: '6px 8px', fontWeight: 500, width: '34%' }}>占比</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => {
+          const pct = totalAmt > 0 ? (r.amount / totalAmt) * 100 : 0;
+          return (
+            <tr key={r.label} style={{ borderTop: '1px solid #f5f5f5' }}>
+              <td style={{ padding: '8px 8px', textAlign: 'left' }}>
+                <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: r.color, marginRight: 8 }} />
+                {r.label}
+              </td>
+              <td style={{ padding: '8px 8px', textAlign: 'right' }}>{r.count}</td>
+              <td style={{ padding: '8px 8px', textAlign: 'right', fontWeight: 600 }}>{fmtMoney(r.amount)}</td>
+              <td style={{ padding: '8px 8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ flex: 1, background: '#f5f5f5', borderRadius: 4, height: 8, overflow: 'hidden' }}>
+                    <div style={{ width: `${pct}%`, height: '100%', background: r.color, borderRadius: 4 }} />
+                  </div>
+                  <span style={{ color: '#999', fontSize: 12, width: 44, textAlign: 'right' }}>{pct.toFixed(1)}%</span>
+                </div>
+              </td>
+            </tr>
+          );
+        })}
+        <tr style={{ borderTop: '2px solid #e8e8e8', fontWeight: 700 }}>
+          <td style={{ padding: '8px 8px', textAlign: 'left' }}>合计</td>
+          <td style={{ padding: '8px 8px', textAlign: 'right' }}>{totalCnt}</td>
+          <td style={{ padding: '8px 8px', textAlign: 'right' }}>{fmtMoney(totalAmt)}</td>
+          <td style={{ padding: '8px 8px', color: '#999', fontSize: 12 }}>100%</td>
+        </tr>
+      </tbody>
+    </table>
+  );
+}
+
+// ===== ⑩ 月度结构堆叠条形（已付 / 待付 / 逾期） =====
+function MonthlyStackedBar({ invoices }: { invoices: any[] }) {
+  const [hover, setHover] = useState<number | null>(null);
+  const now = dayjs();
+  const months: string[] = [];
+  for (let i = 11; i >= 0; i--) months.push(now.subtract(i, 'month').format('YYYY-MM'));
+  const data = months.map((m) => {
+    const items = (invoices || []).filter((i: any) => (i.invoice_date || '').slice(0, 7) === m);
+    const sum = (st: string) =>
+      Math.round(items.filter((i: any) => i.status === st).reduce((s: number, i: any) => s + (Number(i.total_amount) || 0), 0) * 100) / 100;
+    return { month: m, paid: sum('paid'), pending: sum('pending'), overdue: sum('overdue') };
+  });
+  const W = 640, H = 260, padX = 46, padY = 20, padB = 38;
+  const chartH = H - padY - padB;
+  const maxVal = Math.max(1, ...data.map((d) => d.paid + d.pending + d.overdue));
+  const cw = (W - padX * 2) / data.length;
+  const barW = Math.min(26, cw * 0.6);
+  const segs = [
+    { key: 'pending' as const, label: '待付款', color: '#fa8c16' },
+    { key: 'overdue' as const, label: '已逾期', color: '#ff4d4f' },
+    { key: 'paid' as const, label: '已付款', color: '#52c41a' },
+  ];
+  if (data.every((d) => d.paid + d.pending + d.overdue === 0)) {
+    return <Empty description="暂无数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
+  }
+  return (
+    <div>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
+        {[0, 0.25, 0.5, 0.75, 1].map((g, i) => {
+          const y = padY + g * chartH;
+          const v = Math.round(maxVal * g);
+          return (
+            <g key={i}>
+              <line x1={padX} y1={y} x2={W - 12} y2={y} stroke="#f0f0f0" strokeWidth={1} />
+              <text x={padX - 6} y={y + 4} fontSize={10} fill="#999" textAnchor="end">{fmtShort(v)}</text>
+            </g>
+          );
+        })}
+        {data.map((d, i) => {
+          const x = padX + cw * i + (cw - barW) / 2;
+          const total = d.paid + d.pending + d.overdue;
+          let yCursor = padY + chartH;
+          const rects = segs.map((s) => {
+            const val = (d as any)[s.key];
+            const h = (val / maxVal) * chartH;
+            const yTop = yCursor - h;
+            yCursor = yTop;
+            return { ...s, h, y: yTop, val };
+          });
+          const hp = hover === i;
+          return (
+            <g key={d.month} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} style={{ cursor: 'default' }}>
+              <title>{`${d.month}\n待付 ¥${d.pending.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n逾期 ¥${d.overdue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\n已付 ¥${d.paid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</title>
+              {rects.map((r) => (
+                <rect key={r.key} x={x} y={r.y} width={barW} height={Math.max(r.h, 0.5)} fill={r.color} opacity={hover !== null && !hp ? 0.4 : 1} />
+              ))}
+              <text x={x + barW / 2} y={H - 12} fontSize={10} fill={hp ? CHART_BLUE : '#666'} textAnchor="middle">{d.month.slice(2)}</text>
+            </g>
+          );
+        })}
+        {hover !== null && (
+          <g>
+            <rect x={padX + cw * hover} y={padY} width={cw} height={chartH} fill={CHART_BLUE} opacity={0.06} />
+            <text x={padX + cw * hover + cw / 2} y={padY - 6} fontSize={11} fill={CHART_BLUE} textAnchor="middle" fontWeight={700}>
+              {fmtMoney(data[hover].paid + data[hover].pending + data[hover].overdue)}
+            </text>
+          </g>
+        )}
+      </svg>
+      <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 4, flexWrap: 'wrap' }}>
+        {segs.map((s) => (
+          <span key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#666' }}>
+            <span style={{ width: 10, height: 10, borderRadius: 2, background: s.color, display: 'inline-block' }} />{s.label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ===== ⑦ 供应商应付款占比树图（Squarified Treemap） =====
+const TREEMAP_COLORS = ['#1677ff', '#13c2c2', '#722ed1', '#fa8c16', '#eb2f96', '#52c41a', '#fa541c', '#2f54eb', '#faad14', '#a0d911', '#f5222d', '#1890ff'];
+
+interface TreeDatum { name: string; value: number; count: number; color: string; }
+interface TreeRect extends TreeDatum { x: number; y: number; w: number; h: number; }
+interface TreeItem extends TreeDatum { area: number; }
+
+function squarify(data: TreeDatum[], x: number, y: number, w: number, h: number): TreeRect[] {
+  const result: TreeRect[] = [];
+  const total = data.reduce((s, d) => s + d.value, 0) || 1;
+  const items: TreeItem[] = data.map((d) => ({ ...d, area: (d.value / total) * w * h }));
+  let cx = x, cy = y, cw = w, ch = h;
+  let i = 0;
+  const worst = (row: TreeItem[], side: number) => {
+    let sum = 0, max = 0, min = Infinity;
+    for (const r of row) { sum += r.area; if (r.area > max) max = r.area; if (r.area < min) min = r.area; }
+    if (min === 0) min = 0.0001;
+    return Math.max((side * side * max) / (sum * sum), (sum * sum) / (side * side * min));
+  };
+  while (i < items.length) {
+    let row: TreeItem[] = [];
+    let best = Infinity;
+    let j = i;
+    while (j < items.length) {
+      const candidate = row.concat(items[j]);
+      const wv = worst(candidate, Math.min(cw, ch));
+      if (row.length === 0 || wv <= best) { row = candidate; best = wv; j++; } else break;
+    }
+    const rowSum = row.reduce((s, r) => s + r.area, 0);
+    if (cw >= ch) {
+      const colW = rowSum / ch;
+      let yy = cy;
+      for (const r of row) { const rh = r.area / colW; result.push({ ...r, x: cx, y: yy, w: colW, h: rh }); yy += rh; }
+      cx += colW; cw -= colW;
+    } else {
+      const rowH = rowSum / cw;
+      let xx = cx;
+      for (const r of row) { const rw = r.area / rowH; result.push({ ...r, x: xx, y: cy, w: rw, h: rowH }); xx += rw; }
+      cy += rowH; ch -= rowH;
+    }
+    i = j;
+  }
+  return result;
+}
+
+function SupplierTreemap({ invoices }: { invoices: any[] }) {
+  const map = new Map<string, { name: string; amount: number; count: number }>();
+  (invoices || []).forEach((i: any) => {
+    const name = (i.supplier_name || '未知').trim();
+    const cur = map.get(name) || { name, amount: 0, count: 0 };
+    cur.amount += Number(i.total_amount) || 0;
+    cur.count += 1;
+    map.set(name, cur);
+  });
+  const entries = Array.from(map.values()).sort((a, b) => b.amount - a.amount);
+  const top = entries.slice(0, 12);
+  const rest = entries.slice(12);
+  const restAmount = rest.reduce((s, e) => s + e.amount, 0);
+  const restCount = rest.reduce((s, e) => s + e.count, 0);
+  let data: TreeDatum[] = top.map((e, idx) => ({ name: e.name, value: Math.round(e.amount * 100) / 100, count: e.count, color: TREEMAP_COLORS[idx % TREEMAP_COLORS.length] }));
+  if (restAmount > 0) data.push({ name: `其他 ${restCount} 家`, value: Math.round(restAmount * 100) / 100, count: restCount, color: '#bfbfbf' });
+  const total = data.reduce((s, d) => s + d.value, 0);
+  if (total === 0) return <Empty description="暂无供应商数据" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
+  const W = 640, H = 300, pad = 4;
+  const rects = squarify(data, pad, pad, W - pad * 2, H - pad * 2);
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
+      {rects.map((r, i) => (
+        <g key={i}>
+          <rect x={r.x} y={r.y} width={Math.max(r.w - 2, 0)} height={Math.max(r.h - 2, 0)} rx={3} fill={r.color}>
+            <title>{`${r.name}\n金额 ${fmtMoney(r.value)} (${total > 0 ? ((r.value / total) * 100).toFixed(1) : 0}%)\n${r.count} 张发票`}</title>
+          </rect>
+          {r.w > 56 && r.h > 30 && (
+            <>
+              <text x={r.x + 6} y={r.y + 16} fontSize={11} fill="#fff" fontWeight={600}>{r.name.length > 8 ? r.name.slice(0, 8) + '…' : r.name}</text>
+              <text x={r.x + 6} y={r.y + 32} fontSize={11} fill="rgba(255,255,255,0.92)">{fmtShort(r.value)}</text>
+            </>
+          )}
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+// ===== ① 未来 13 周付款日历热力图 =====
+function PaymentCalendarHeatmap({ invoices }: { invoices: any[] }) {
+  const today = dayjs();
+  const map = new Map<string, { amount: number; count: number }>();
+  (invoices || []).filter((i: any) => i.status !== 'paid' && i.payment_date).forEach((i: any) => {
+    const k = (i.payment_date || '').slice(0, 10);
+    if (!k) return;
+    const cur = map.get(k) || { amount: 0, count: 0 };
+    cur.amount += Number(i.total_amount) || 0;
+    cur.count += 1;
+    map.set(k, cur);
+  });
+  const weeks = 13;
+  const firstDay = today.subtract((today.day() + 6) % 7, 'day'); // 本周一
+  const maxVal = Math.max(1, ...Array.from(map.values()).map((v) => v.amount));
+  const colorOf = (amt: number) => {
+    if (amt <= 0) return '#f0f0f0';
+    const r = amt / maxVal;
+    if (r >= 0.75) return '#cf1322';
+    if (r >= 0.5) return '#ff7875';
+    if (r >= 0.25) return '#ffccc7';
+    return '#fff1f0';
+  };
+  const weekdays = ['一', '二', '三', '四', '五', '六', '日'];
+  const cellsByWeek: { date: any; amount: number; count: number }[][] = [];
+  for (let w = 0; w < weeks; w++) {
+    const col: { date: any; amount: number; count: number }[] = [];
+    for (let d = 0; d < 7; d++) {
+      const date = firstDay.add(w * 7 + d, 'day');
+      const info = map.get(date.format('YYYY-MM-DD'));
+      col.push({ date, amount: info?.amount || 0, count: info?.count || 0 });
+    }
+    cellsByWeek.push(col);
+  }
+  return (
+    <div>
+      <div style={{ overflowX: 'auto', paddingBottom: 4 }}>
+        <div style={{ display: 'flex', gap: 4, minWidth: 330 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginRight: 2, justifyContent: 'space-between', padding: '2px 0' }}>
+            {weekdays.map((d) => (
+              <div key={d} style={{ fontSize: 10, color: '#999', height: 18, lineHeight: '18px', width: 14, textAlign: 'center' }}>{d}</div>
+            ))}
+          </div>
+          {cellsByWeek.map((col, wi) => (
+            <div key={wi} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {col.map((cell, di) => {
+                const isToday = cell.date.isSame(today, 'day');
+                return (
+                  <Tooltip key={di} title={
+                    <div style={{ lineHeight: 1.7 }}>
+                      <div>{cell.date.format('YYYY-MM-DD')}{isToday ? '（今天）' : ''}</div>
+                      <div>待付 ¥{cell.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                      <div>{cell.count} 张发票</div>
+                    </div>
+                  }>
+                    <div style={{
+                      width: 18, height: 18, borderRadius: 3, background: colorOf(cell.amount),
+                      border: isToday ? '2px solid #1677ff' : '1px solid rgba(0,0,0,0.04)',
+                      boxSizing: 'border-box', cursor: 'default',
+                    }} />
+                  </Tooltip>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10, fontSize: 12, color: '#999', justifyContent: 'flex-end' }}>
+        <span>少</span>
+        {['#f0f0f0', '#fff1f0', '#ffccc7', '#ff7875', '#cf1322'].map((c) => (
+          <span key={c} style={{ width: 14, height: 14, borderRadius: 3, background: c, display: 'inline-block', border: '1px solid rgba(0,0,0,0.04)' }} />
+        ))}
+        <span>多</span>
+      </div>
+    </div>
+  );
+}
+
+// ===== ⑤ 风险预警面板（大额逾期 + 即将到期） =====
+function RiskAlertPanel({ invoices, navigate }: { invoices: any[]; navigate: (p: string) => void }) {
+  const today = dayjs();
+  const list = (invoices || []).filter((i: any) => i.payment_date);
+  const overdue = list.filter((i: any) => i.status === 'overdue')
+    .map((i: any) => ({ ...i, days: today.diff(dayjs(i.payment_date), 'day') }))
+    .sort((a, b) => b.total_amount - a.total_amount).slice(0, 10);
+  const nearDue = list.filter((i: any) => i.status !== 'paid')
+    .map((i: any) => ({ ...i, daysLeft: dayjs(i.payment_date).diff(today, 'day') }))
+    .filter((i: any) => i.daysLeft >= 0 && i.daysLeft <= 15)
+    .sort((a, b) => b.total_amount - a.total_amount).slice(0, 10);
+
+  const RowItem = ({ inv, kind }: { inv: any; kind: 'overdue' | 'near' }) => (
+    <div
+      onClick={() => navigate(`/invoice-list?id=${inv.id}`)}
+      style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 0', borderBottom: '1px solid #f5f5f5', cursor: 'pointer' }}
+    >
+      <div style={{ minWidth: 0, flex: 1, marginRight: 12 }}>
+        <div style={{ fontSize: 13, color: '#333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {(inv.supplier_name || '未知').replace(/^(名称[：:\s]*)/, '')}
+        </div>
+        <div style={{ fontSize: 12, color: '#999', marginTop: 2 }}>{inv.invoice_no || '-'}</div>
+      </div>
+      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+        <div style={{ color: '#1677ff', fontWeight: 600, fontSize: 14 }}>{fmtMoney(Number(inv.total_amount) || 0)}</div>
+        <Tag color={kind === 'overdue' ? 'red' : 'volcano'} style={{ fontSize: 11, marginTop: 2 }}>
+          {kind === 'overdue' ? `逾期 ${inv.days} 天` : `${inv.daysLeft} 天后到期`}
+        </Tag>
+      </div>
+    </div>
+  );
+
+  return (
+    <Row gutter={[16, 16]}>
+      <Col xs={24} lg={12}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          <WarningOutlined style={{ color: '#ff4d4f' }} />
+          <span style={{ fontWeight: 600, fontSize: 14 }}>大额逾期 TOP 10</span>
+          <span style={{ fontSize: 12, color: '#999' }}>(按金额)</span>
+        </div>
+        {overdue.length > 0 ? overdue.map((inv) => <RowItem key={inv.id} inv={inv} kind="overdue" />) : <Empty description="无逾期发票" image={Empty.PRESENTED_IMAGE_SIMPLE} />}
+      </Col>
+      <Col xs={24} lg={12}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          <ClockCircleOutlined style={{ color: '#fa8c16' }} />
+          <span style={{ fontWeight: 600, fontSize: 14 }}>即将到期 TOP 10</span>
+          <span style={{ fontSize: 12, color: '#999' }}>(15 天内 · 按金额)</span>
+        </div>
+        {nearDue.length > 0 ? nearDue.map((inv) => <RowItem key={inv.id} inv={inv} kind="near" />) : <Empty description="无即将到期" image={Empty.PRESENTED_IMAGE_SIMPLE} />}
+      </Col>
+    </Row>
   );
 }
