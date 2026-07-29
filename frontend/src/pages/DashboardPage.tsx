@@ -220,7 +220,7 @@ export default function DashboardPage() {
         <div className="yb-stat-card">
           <div className="stat-main">
             <div className="stat-label">已付合计</div>
-            <div className="stat-value">{data.paid_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+            <div className="stat-value" style={{ color: '#52c41a' }}>{data.paid_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
             <div className="stat-sub">已付款发票金额合计</div>
           </div>
           <div className="stat-icon" style={{ background: '#f6ffed', color: '#52c41a' }}>
@@ -231,7 +231,7 @@ export default function DashboardPage() {
         <div className="yb-stat-card">
           <div className="stat-main">
             <div className="stat-label">待付合计</div>
-            <div className="stat-value">{data.total_payable.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+            <div className="stat-value" style={{ color: '#fa8c16' }}>{data.total_payable.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
             <div className="stat-sub">未付款发票金额合计（含已逾期）</div>
           </div>
           <div className="stat-icon" style={{ background: '#fff7e6', color: '#fa8c16' }}>
