@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Table, Button, Space, Input, Select, Tag, Modal, Descriptions,
   message, Popconfirm, Card, Row, Col, Drawer, Form, DatePicker,
-  Checkbox, Statistic, Image, Tooltip, Collapse, Upload,
+  Checkbox, Statistic, Image, Tooltip, Collapse, Upload, Spin,
 } from 'antd';
 import {
   SearchOutlined, DeleteOutlined, EditOutlined,
@@ -43,6 +43,28 @@ export default function InvoiceListPage() {
 
   // 详情图片上传
   const [detailUploading, setDetailUploading] = useState(false);
+  const [detailImageLoading, setDetailImageLoading] = useState(false);
+
+  // 图片预览（按需加载）
+  const [preview, setPreview] = useState<{ open: boolean; src: string; loading: boolean }>({
+    open: false,
+    src: '',
+    loading: false,
+  });
+
+  const handlePreviewImage = async (record: any) => {
+    setPreview({ open: true, src: record.image_data || '', loading: true });
+    try {
+      if (!record.image_data) {
+        const res = await invoiceApi.loadImage(record.id);
+        record.image_data = res.data || '';
+      }
+      setPreview({ open: true, src: record.image_data, loading: false });
+    } catch {
+      message.error('发票图片加载失败');
+      setPreview({ open: true, src: '', loading: false });
+    }
+  };
 
   const fetchInvoices = async () => {
     setLoading(true);
@@ -83,6 +105,19 @@ export default function InvoiceListPage() {
     amountMax,
   ]);
   useEffect(() => { fetchSuppliers(); }, []);
+
+  // 详情抽屉打开时，按需加载发票图片
+  useEffect(() => {
+    if (!detailOpen || !selectedInvoice) return;
+    if (selectedInvoice.image_data || !selectedInvoice.file_name) return;
+    setDetailImageLoading(true);
+    invoiceApi.loadImage(selectedInvoice.id)
+      .then((res) => {
+        setSelectedInvoice((prev: any) => (prev ? { ...prev, image_data: res.data || '' } : prev));
+      })
+      .catch(() => { /* ignore */ })
+      .finally(() => setDetailImageLoading(false));
+  }, [detailOpen, selectedInvoice?.id]);
 
   // 剩余天数计算
   const daysLeft = (paymentDate: string): number | null => {
@@ -312,16 +347,18 @@ export default function InvoiceListPage() {
     {
       title: '附件',
       key: 'thumb',
-      width: 60,
+      width: 70,
+      align: 'center' as const,
       render: (_: any, record: any) =>
-        record.image_data ? (
-          <Image
-            src={record.image_data}
-            width={36}
-            height={28}
-            style={{ borderRadius: 4, objectFit: 'cover', cursor: 'pointer' }}
-            preview={{ src: record.image_data }}
-          />
+        record.file_name ? (
+          <Tooltip title="查看发票图片">
+            <Button
+              type="text"
+              size="small"
+              icon={<PictureOutlined />}
+              onClick={() => handlePreviewImage(record)}
+            />
+          </Tooltip>
         ) : (
           <span style={{ color: '#d9d9d9' }}>—</span>
         ),
@@ -609,14 +646,20 @@ export default function InvoiceListPage() {
       >
         {selectedInvoice && (
           <>
-            {selectedInvoice.image_data && (
-              <div style={{ textAlign: 'center', marginBottom: 16 }}>
-                <Image
-                  src={selectedInvoice.image_data}
-                  alt="原始发票"
-                  style={{ maxWidth: '100%', maxHeight: 400 }}
-                  fallback="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjE1MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZjBmMGYwIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGRvbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiNhYWEiIGZvbnQtc2l6ZT0iMTQiPuWbvueJh+WKoOi9veWksei0pTwvdGV4dD48L3N2Zz4="
-                />
+            {selectedInvoice.file_name && (
+              <div style={{ textAlign: 'center', marginBottom: 16, minHeight: 80, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {selectedInvoice.image_data ? (
+                  <Image
+                    src={selectedInvoice.image_data}
+                    alt="原始发票"
+                    style={{ maxWidth: '100%', maxHeight: 400 }}
+                    fallback="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjE1MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZjBmMGYwIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGRvbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiNhYWEiIGZvbnQtc2l6ZT0iMTQiPuWbvueJh+WKoOi9veWksei0pTwvdGV4dD48L3N2Zz4="
+                  />
+                ) : detailImageLoading ? (
+                  <Spin tip="加载图片中..." />
+                ) : (
+                  <span style={{ color: '#999' }}>暂无图片</span>
+                )}
               </div>
             )}
             <Descriptions column={1} bordered size="small">
@@ -635,6 +678,26 @@ export default function InvoiceListPage() {
           </>
         )}
       </Drawer>
+
+      {/* 发票图片预览（按需加载） */}
+      <Modal
+        title="发票图片"
+        open={preview.open}
+        onCancel={() => setPreview({ ...preview, open: false })}
+        footer={null}
+        width={760}
+        centered
+      >
+        {preview.loading ? (
+          <div style={{ textAlign: 'center', padding: 48 }}>
+            <Spin tip="加载图片中..." />
+          </div>
+        ) : preview.src ? (
+          <Image src={preview.src} alt="发票图片" style={{ maxWidth: '100%', display: 'block', margin: '0 auto' }} />
+        ) : (
+          <div style={{ textAlign: 'center', padding: 48, color: '#999' }}>暂无发票图片</div>
+        )}
+      </Modal>
 
       {/* Edit Modal */}
       <Modal title="编辑发票" open={editOpen} onCancel={() => setEditOpen(false)} footer={null} width={600}>
