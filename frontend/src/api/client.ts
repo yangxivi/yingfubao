@@ -478,6 +478,12 @@ export const dashboardApi = {
 
       const pending_count = list.filter((i) => i.status !== 'paid').length;
       const overdue_list = list.filter((i) => i.status === 'overdue');
+      const total_amount = Math.round(
+        list.reduce((s, i) => s + (i.total_amount || 0), 0) * 100,
+      ) / 100;
+      const paid_amount = Math.round(
+        list.filter((i) => i.status === 'paid').reduce((s, i) => s + (i.total_amount || 0), 0) * 100,
+      ) / 100;
       const total_payable = Math.round(
         list.filter((i) => i.status !== 'paid').reduce((s, i) => s + (i.total_amount || 0), 0) * 100,
       ) / 100;
@@ -497,6 +503,8 @@ export const dashboardApi = {
         total_invoices: list.length,
         pending_count,
         overdue_count: overdue_list.length,
+        total_amount,
+        paid_amount,
         total_payable,
         overdue_amount,
         supplier_count: suppliers.length,
