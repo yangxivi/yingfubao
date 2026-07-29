@@ -11,6 +11,7 @@ import {
   UserOutlined,
   DownloadOutlined,
   ImportOutlined,
+  UpOutlined,
 } from '@ant-design/icons';
 import { getCurrentUserId, clearSession, getAuthMode } from '../lib/auth';
 import { exportUserBackup, importUserBackup, isBackupFile } from '../lib/db';
@@ -48,6 +49,10 @@ export default function Layout() {
   const handleLogout = () => {
     clearSession();
     navigate('/login');
+  };
+
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   // ===== 导出 / 导入 JSON 备份 =====
@@ -186,9 +191,40 @@ export default function Layout() {
       </header>
 
       {/* 主内容区 */}
-      <main style={{ padding: '24px 32px', maxWidth: '1400px', margin: '0 auto' }}>
+      <main style={{ padding: '24px 32px 72px 32px', maxWidth: '1400px', margin: '0 auto' }}>
         <Outlet />
       </main>
+
+      {/* 底部固定导航栏 */}
+      <footer
+        style={{
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: 48,
+          background: '#fff',
+          borderTop: '1px solid #e8e8e8',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '0 32px',
+          zIndex: 100,
+          boxShadow: '0 -2px 8px rgba(0,0,0,0.04)',
+        }}
+      >
+        <div style={{ flex: 1 }} />
+        <div style={{ color: '#999', fontSize: 13 }}>COPYRIGHT @ 应付宝</div>
+        <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end' }}>
+          <Button
+            type="text"
+            icon={<UpOutlined />}
+            onClick={scrollToTop}
+            title="回到顶部"
+            style={{ color: '#666' }}
+          />
+        </div>
+      </footer>
 
       {/* 云���同步设置向导 */}
       <SetupWizard
