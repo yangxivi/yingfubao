@@ -229,7 +229,7 @@ export const invoiceApi = {
       return decorate(inv, suppliers);
     }),
 
-  upload: (file: File, onProgress?: (current: number, total: number) void) =>
+  upload: (file: File, onProgress?: (current: number, total: number) => void) =>
     guard(async () => {
       const userId = getUserId();
       const result = await recognizeInvoice(file, onProgress);
