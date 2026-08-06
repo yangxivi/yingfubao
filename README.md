@@ -2,7 +2,7 @@
 
 面向中小企业的在线应付账款管理工具：上传增值税发票（图片/PDF），系统自动 **OCR 识别**并录入发票列表，按账期生成到期提醒，统一管理供应商信息。支持 **云端多浏览器同步** 与 **数据驾驶舱可视化**。
 
-> 🌐 **在线体验**：[https://yangxivi.github.io/yingfubao/](https://yangxivi.github.io/yingfubao/)
+> 🌐 **在线体验**：[https://yfb.xiviai.cn](https://yfb.xiviai.cn)
 
 ## 功能特性
 
@@ -107,7 +107,7 @@ yingfubao/
 
 ### 方式一：直接使用线上版本
 
-打开 [https://yangxivi.github.io/yingfubao/](https://yangxivi.github.io/yingfubao/) 即可使用（无需安装）。
+打开 [https://yfb.xiviai.cn](https://yfb.xiviai.cn) 即可使用（无需安装）。
 
 > ⚠️ 首次使用前需在 Supabase 执行建表 SQL（见下方「Supabase 初始化」），否则应用会以本地降级模式运行。
 
