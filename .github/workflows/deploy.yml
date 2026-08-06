@@ -40,6 +40,9 @@ jobs:
         working-directory: frontend
         run: cp dist/index.html dist/404.html
 
+      - name: Copy CNAME into dist for custom domain
+        run: cp CNAME frontend/dist/CNAME
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
