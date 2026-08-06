@@ -229,7 +229,7 @@ export const invoiceApi = {
       return decorate(inv, suppliers);
     }),
 
-  upload: (file: File, onProgress?: (current: number, total: number) => void) =>
+  upload: (file: File, onProgress?: (current: number, total: number) void) =>
     guard(async () => {
       const userId = getUserId();
       const result = await recognizeInvoice(file, onProgress);
@@ -347,7 +347,7 @@ export const invoiceApi = {
           const pd = new Date(inv.payment_date + 'T00:00:00');
           inv.status = pd < today() ? 'overdue' : 'pending';
         }
-        updated += 1;
+        updated++;
       }
       if (updated > 0) {
         writeDB(db);
@@ -599,7 +599,7 @@ export const dashboardApi = {
           tax_id: s.tax_id,
           contact_person: s.contact_person,
           created_at: s.created_at,
-          }));
+        }));
     }),
 
     analytics: () =>
@@ -666,7 +666,7 @@ export const dashboardApi = {
           .slice(0, 5)
           .map((s) => ({ ...s, amount: Math.round(s.amount * 100) / 100 }));
 
-        // 4) 账龄分布（逾期天数分段）
+        // 4) 未来应付预测（按剩余天数分桶，对应「未来 6 个月应付预测」图表）
         const agingBuckets = [
           { bucket: '0-30天', min: 0, max: 30 },
           { bucket: '31-60天', min: 31, max: 60 },
@@ -675,11 +675,11 @@ export const dashboardApi = {
         ];
         const aging = agingBuckets.map((b) => {
           const items = list.filter((i: any) => {
-            if (i.status !== 'overdue' || !i.payment_date) return false;
-            const days = Math.round(
-              (today().getTime() - new Date(i.payment_date + 'T00:00:00').getTime()) / 86400000,
+            if (i.status === 'paid' || !i.payment_date) return false;
+            const daysLeft = Math.round(
+              (new Date(i.payment_date + 'T00:00:00').getTime() - today().getTime()) / 86400000,
             );
-            return days >= b.min && days <= b.max;
+            return daysLeft >= b.min && daysLeft <= b.max;
           });
           return {
             bucket: b.bucket,
