@@ -1,0 +1,30 @@
+name: Supabase Keep-Alive
+
+# 应付宝（yingfubao）后端用 Supabase 免费层。
+# 免费项目在「连续 7 天无 API/数据库连接」后会被 Supabase 自动暂停（Pause），
+# 暂停期间网站仪表盘会全部显示 0（数据其实没丢，恢复即回）。
+# 本工作流每 5 天定时 ping 一次 Supabase REST，制造活跃连接，避免被暂停。
+on:
+  schedule:
+    - cron: '17 3 */5 * *'   # 每 5 天 UTC 03:17 触发（远小于 7 天阈值）
+  workflow_dispatch:          # 也可在 Actions 页面手动点「Run workflow」立即验证
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase REST to keep project active
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            "$SUPABASE_URL/rest/v1/invoices?select=id&limit=1" \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY")
+          echo "Supabase ping HTTP status: $CODE"
+          if [ "$CODE" = "200" ]; then
+            echo "✅ keep-alive OK，项目保持活跃"
+          else
+            echo "::warning::keep-alive ping 返回 $CODE（期望 200），请检查 Secrets 或项目状态"
+          fi
