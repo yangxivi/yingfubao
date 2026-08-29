@@ -21,7 +21,7 @@ import {
   CheckCircleOutlined,
   ApiOutlined,
 } from '@ant-design/icons';
-import { getCurrentUserId, clearSession, getAuthMode } from '../lib/auth';
+import { getCurrentUserId, clearSession, getAuthMode, isOwnerUser } from '../lib/auth';
 import { exportUserBackup, importUserBackup, isBackupFile } from '../lib/db';
 import { getCloudStatus } from '../lib/cloudStatus';
 import { isDesktop, electronAPI, getBaiduOcrConfig, setBaiduOcrConfig, hasBaiduOcrConfig } from '../lib/desktop-env';
@@ -55,7 +55,7 @@ export default function Layout() {
   const [testingBaidu, setTestingBaidu] = useState(false);
   const isDesktopMode = isDesktop();
   const baiduConfigured = hasBaiduOcrConfig();
-  const isOwnerUser = (user.username || '').toLowerCase() === 'xivi';
+  const owner = isOwnerUser();
   const [quota, setQuota] = useState<OcrQuota | null>(
     getOcrQuota() ?? { used: 0, total: 800 },
   );
@@ -217,6 +217,13 @@ export default function Layout() {
     setShowSettings(false);
   };
 
+  const clearBaidu = () => {
+    setBaiduOcrConfig(null);
+    setBaiduKey('');
+    setBaiduSecret('');
+    messageApi.success('已清除自有 Key，恢复使用应付宝共享额度');
+  };
+
   const openUserModal = (tab: 'username' | 'password') => {
     setUserModalTab(tab);
     setShowUserModal(true);
@@ -319,9 +326,9 @@ export default function Layout() {
           )}
 
           {/* OCR 额度指示器：桌面端 / 网站端（已连 Supabase）始终显示。
-              - XIVI 账号 → 「自有 Key · 不限额度」
-              - 非 XIVI 但配置了自有 Key → 「自有 Key · 已调用 X 次」（本地计数，不限额度）
-              - 其它 → 「已调用 X / 800 次」（共享额度，每月 1 日自动清零） */}
+              - XIVI 系所有者账号（桌面端 XIVI / 网页端 xiviyang）→ 「自有 Key · 不限额度」
+              - 非所有者但配置了自有百度 Key → 「自有 Key · 不限额度」
+              - 其它 → 「共享额度 · 已调用 X / 800 次」（共享额度，每月 1 日自动清零） */}
           {!isLocal && (
             <div
               className="yb-nav-hide-mobile"
@@ -334,17 +341,17 @@ export default function Layout() {
                 padding: '2px 10px',
                 borderRadius: 12,
                 cursor: isDesktopMode ? 'pointer' : 'default',
-                background: (isOwnerUser || baiduConfigured) ? '#e6f4ff' : isQuotaExhausted(quota) ? '#fff1f0' : '#f6ffed',
-                color: (isOwnerUser || baiduConfigured) ? '#1677ff' : isQuotaExhausted(quota) ? '#cf1322' : '#389e0d',
-                border: `1px solid ${(isOwnerUser || baiduConfigured) ? '#91caff' : isQuotaExhausted(quota) ? '#ffa39e' : '#b7eb8f'}`,
+                background: (owner || baiduConfigured) ? '#e6f4ff' : isQuotaExhausted(quota) ? '#fff1f0' : '#f6ffed',
+                color: (owner || baiduConfigured) ? '#1677ff' : isQuotaExhausted(quota) ? '#cf1322' : '#389e0d',
+                border: `1px solid ${(owner || baiduConfigured) ? '#91caff' : isQuotaExhausted(quota) ? '#ffa39e' : '#b7eb8f'}`,
                 userSelect: 'none',
                 minWidth: 120,
               }}
               title={
-                isOwnerUser
-                  ? 'XIVI 自有 Key，不占用共享额度'
+                owner
+                  ? 'XIVI 系所有者账号，使用自有百度 Key，不占用共享额度'
                   : baiduConfigured
-                    ? `你正在使用自己的百度 OCR Key，不占用应付宝共享 800 次额度；本机累计已调用 ${personalUsed} 次`
+                    ? '你正在使用自己的百度 OCR Key，不占用应付宝共享 800 次额度'
                     : isQuotaExhausted(quota)
                       ? '共享额度已用完，点击配置自己的百度 Key'
                       : `共享百度 OCR 额度：本月已调用 ${quota?.used ?? 0} / ${quota?.total ?? 800} 次，每月 1 日自动清零重新统计`
@@ -352,11 +359,11 @@ export default function Layout() {
             >
               <ApiOutlined />
               <span>
-                {isOwnerUser
+                {owner
                   ? '自有 Key · 不限额度'
                   : baiduConfigured
-                    ? `自有 Key · 已调用 ${personalUsed} 次`
-                    : `已调用 ${quota?.used ?? 0} / ${quota?.total ?? 800} 次`}
+                    ? '自有 Key · 不限额度'
+                    : `共享额度 · 已调用 ${quota?.used ?? 0} / ${quota?.total ?? 800} 次`}
               </span>
             </div>
           )}
@@ -474,8 +481,8 @@ export default function Layout() {
           }
           description={
             baiduConfigured
-              ? `发票识别走你自己的百度 Key，不限共享额度，Key 仅保存在本机。本账号本机累计已调用 ${personalUsed} 次。`
-              : `所有用户共享每月 800 次免费调用额度。你可在下方填写自己的百度 Key，切换为独立额度。${quota && quota.total > 0 ? `本月已用 ${quota.used}/${quota.total} 次。` : ''}`
+              ? '发票识别走你自己的百度 Key，不占用应付宝共享 800 次额度，Key 仅保存在本机。'
+              : `所有用户共享每月 800 次免费调用额度。本月已用 ${quota && quota.total > 0 ? `${quota.used}/${quota.total}` : '0/800'} 次；额度用完后需填写自己的百度 Key 才能继续识别。`
           }
         />
 
@@ -515,6 +522,9 @@ export default function Layout() {
           <Button type="primary" onClick={saveBaidu} loading={testingBaidu}>
             {testingBaidu ? '验证中…' : '保存并验证'}
           </Button>
+          {baiduConfigured && (
+            <Button danger onClick={clearBaidu}>清除自有 Key</Button>
+          )}
           <Button onClick={() => electronAPI()?.checkUpdate()}>检查更新</Button>
           <Button onClick={() => electronAPI()?.openDataFolder()}>打开数据目录</Button>
         </div>

@@ -109,6 +109,19 @@ export function getCurrentUserId(): string | null {
   }
 }
 
+/** 判断当前登录用户是否为 XIVI 系所有者账号（桌面端 XIVI / 网页端 xiviyang）。
+ *  所有者账号使用自有百度 Key，不占用共享额度。 */
+export function isOwnerUser(): boolean {
+  const raw = localStorage.getItem(USER_KEY);
+  if (!raw) return false;
+  try {
+    const username = JSON.parse(raw).username || '';
+    return ['xivi', 'xiviyang'].includes(username.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
 // ===== 云端模式：原逻辑不变 =====
 
 async function cloudRegister(data: {
