@@ -26,7 +26,7 @@ import { exportUserBackup, importUserBackup, isBackupFile } from '../lib/db';
 import { getCloudStatus } from '../lib/cloudStatus';
 import { isDesktop, electronAPI, getBaiduOcrConfig, setBaiduOcrConfig, hasBaiduOcrConfig } from '../lib/desktop-env';
 import { fetchSharedOcrQuota } from '../lib/ocr';
-import { getOcrQuota, subscribeOcrQuota, isQuotaExhausted } from '../lib/ocr-quota';
+import { getOcrQuota, subscribeOcrQuota, isQuotaExhausted, getPersonalOcrUsed, subscribePersonalOcrUsed } from '../lib/ocr-quota';
 import type { OcrQuota } from '../lib/ocr-quota';
 import SetupWizard from './SetupWizard';
 import UserProfileModal from './UserProfileModal';
@@ -59,12 +59,16 @@ export default function Layout() {
   const [quota, setQuota] = useState<OcrQuota | null>(
     getOcrQuota() ?? { used: 0, total: 800 },
   );
+  const [personalUsed, setPersonalUsed] = useState<number>(() => getPersonalOcrUsed(getCurrentUserId()));
   const cloudStatus = getCloudStatus();
   const isLocal = !isDesktopMode && (getAuthMode() === 'local' || cloudStatus === 'uninitialized');
 
   // 订阅共享 OCR 额度（OCR 调用后会自动刷新）
   useEffect(() => {
-    const unsubscribe = subscribeOcrQuota((q) => setQuota(q));
+    const unsubscribeQuota = subscribeOcrQuota((q) => setQuota(q));
+    const unsubscribePersonal = subscribePersonalOcrUsed((uid, used) => {
+      if (uid === getCurrentUserId()) setPersonalUsed(used);
+    });
     let timer: ReturnType<typeof setInterval> | undefined;
     // 桌面端或网站端只要连了 Supabase 就主动查一次，并每 60 秒刷新
     if (!isLocal) {
@@ -72,7 +76,8 @@ export default function Layout() {
       timer = setInterval(() => fetchSharedOcrQuota().catch(() => {}), 60_000);
     }
     return () => {
-      unsubscribe();
+      unsubscribeQuota();
+      unsubscribePersonal();
       if (timer) clearInterval(timer);
     };
   }, [isLocal]);
@@ -314,8 +319,9 @@ export default function Layout() {
           )}
 
           {/* OCR 额度指示器：桌面端 / 网站端（已连 Supabase）始终显示。
-              只有 XIVI 账号显示「自有 Key · 不限额度」；
-              其它账号始终显示「已调用 X / 800 次」（每月 1 日自动清零）。 */}
+              - XIVI 账号 → 「自有 Key · 不限额度」
+              - 非 XIVI 但配置了自有 Key → 「自有 Key · 已调用 X 次」（本地计数，不限额度）
+              - 其它 → 「已调用 X / 800 次」（共享额度，每月 1 日自动清零） */}
           {!isLocal && (
             <div
               className="yb-nav-hide-mobile"
@@ -328,25 +334,29 @@ export default function Layout() {
                 padding: '2px 10px',
                 borderRadius: 12,
                 cursor: isDesktopMode ? 'pointer' : 'default',
-                background: isOwnerUser ? '#e6f4ff' : isQuotaExhausted(quota) ? '#fff1f0' : '#f6ffed',
-                color: isOwnerUser ? '#1677ff' : isQuotaExhausted(quota) ? '#cf1322' : '#389e0d',
-                border: `1px solid ${isOwnerUser ? '#91caff' : isQuotaExhausted(quota) ? '#ffa39e' : '#b7eb8f'}`,
+                background: (isOwnerUser || baiduConfigured) ? '#e6f4ff' : isQuotaExhausted(quota) ? '#fff1f0' : '#f6ffed',
+                color: (isOwnerUser || baiduConfigured) ? '#1677ff' : isQuotaExhausted(quota) ? '#cf1322' : '#389e0d',
+                border: `1px solid ${(isOwnerUser || baiduConfigured) ? '#91caff' : isQuotaExhausted(quota) ? '#ffa39e' : '#b7eb8f'}`,
                 userSelect: 'none',
                 minWidth: 120,
               }}
               title={
                 isOwnerUser
                   ? 'XIVI 自有 Key，不占用共享额度'
-                  : isQuotaExhausted(quota)
-                    ? '共享额度已用完，点击配置自己的百度 Key'
-                    : `共享百度 OCR 额度：本月已调用 ${quota?.used ?? 0} / ${quota?.total ?? 800} 次，每月 1 日自动清零重新统计`
+                  : baiduConfigured
+                    ? `你正在使用自己的百度 OCR Key，不占用应付宝共享 800 次额度；本机累计已调用 ${personalUsed} 次`
+                    : isQuotaExhausted(quota)
+                      ? '共享额度已用完，点击配置自己的百度 Key'
+                      : `共享百度 OCR 额度：本月已调用 ${quota?.used ?? 0} / ${quota?.total ?? 800} 次，每月 1 日自动清零重新统计`
               }
             >
               <ApiOutlined />
               <span>
                 {isOwnerUser
                   ? '自有 Key · 不限额度'
-                  : `已调用 ${quota?.used ?? 0} / ${quota?.total ?? 800} 次`}
+                  : baiduConfigured
+                    ? `自有 Key · 已调用 ${personalUsed} 次`
+                    : `已调用 ${quota?.used ?? 0} / ${quota?.total ?? 800} 次`}
               </span>
             </div>
           )}
@@ -464,7 +474,7 @@ export default function Layout() {
           }
           description={
             baiduConfigured
-              ? '发票识别走你自己的百度 Key，不限共享额度，Key 仅保存在本机。'
+              ? `发票识别走你自己的百度 Key，不限共享额度，Key 仅保存在本机。本账号本机累计已调用 ${personalUsed} 次。`
               : `所有用户共享每月 800 次免费调用额度。你可在下方填写自己的百度 Key，切换为独立额度。${quota && quota.total > 0 ? `本月已用 ${quota.used}/${quota.total} 次。` : ''}`
           }
         />

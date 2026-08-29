@@ -7,6 +7,65 @@ export interface OcrQuota {
 }
 
 const QUOTA_STORAGE_KEY = 'yingfubao_ocr_quota_v1';
+const PERSONAL_COUNT_KEY = 'yingfubao_ocr_personal_count_v1';
+
+// 个人 OCR 调用计数（按用户 ID），无论走自有 Key 还是共享 Key，每次成功识别 +1，
+// 用于在自有 Key 账号顶栏给出「已调用 X 次」的反馈。
+function readPersonalCounts(): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(PERSONAL_COUNT_KEY);
+    if (!raw) return {};
+    const obj = JSON.parse(raw);
+    if (obj && typeof obj === 'object') return obj as Record<string, number>;
+  } catch {
+    /* ignore */
+  }
+  return {};
+}
+
+function writePersonalCounts(map: Record<string, number>): void {
+  try {
+    localStorage.setItem(PERSONAL_COUNT_KEY, JSON.stringify(map));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function getPersonalOcrUsed(userId: string | null): number {
+  if (!userId) return 0;
+  const counts = readPersonalCounts();
+  return typeof counts[userId] === 'number' ? counts[userId] : 0;
+}
+
+export function incrementPersonalOcrUsed(userId: string | null): number {
+  if (!userId) return 0;
+  const counts = readPersonalCounts();
+  counts[userId] = (counts[userId] || 0) + 1;
+  writePersonalCounts(counts);
+  notifyPersonalListeners(userId);
+  return counts[userId];
+}
+
+const personalListeners = new Set<(userId: string, used: number) => void>();
+
+function notifyPersonalListeners(userId: string): void {
+  const used = getPersonalOcrUsed(userId);
+  for (const fn of personalListeners) {
+    try { fn(userId, used); } catch { /* ignore */ }
+  }
+}
+
+export function subscribePersonalOcrUsed(fn: (userId: string, used: number) => void): () => void {
+  personalListeners.add(fn);
+  return () => personalListeners.delete(fn);
+}
+
+export function resetPersonalOcrUsed(userId: string | null): void {
+  if (!userId) return;
+  const counts = readPersonalCounts();
+  delete counts[userId];
+  writePersonalCounts(counts);
+}
 
 function readStoredQuota(): OcrQuota | null {
   try {
