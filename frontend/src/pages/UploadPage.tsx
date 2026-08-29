@@ -18,6 +18,7 @@ import {
   RightOutlined,
 } from '@ant-design/icons';
 import { invoiceApi, dashboardApi } from '../api/client';
+import { fetchSharedOcrQuota } from '../lib/ocr';
 
 const { Dragger } = Upload;
 
@@ -73,6 +74,8 @@ export default function UploadPage() {
         }
         setStats((s) => ({ ...s, success: s.success + 1 }));
         resultRef.current.success += 1;
+        // 共享 OCR 额度即时刷新（自有 Key 账号此调用会静默失败，不影响流程）
+        fetchSharedOcrQuota().catch(() => {});
       } catch (err: any) {
         options.onError?.(err);
         const detail = err?.response?.data?.detail || err?.message || '上传失败';

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   Table, Button, Modal, Form, Input, Space, message, Popconfirm, Card,
-  Select, Statistic, Tag, Row, Col, Checkbox,
+  Select, Tag, Row, Col, Checkbox,
 } from 'antd';
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined,
@@ -261,7 +261,10 @@ export default function SupplierListPage() {
           </Checkbox>
           {selectedRowKeys.length > 0 ? (
             <>
-              <Statistic title="选中数量" value={selectedSummary.count} suffix="家" style={{ fontSize: 14 }} valueStyle={{ fontSize: 16, fontWeight: 600 }} />
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, whiteSpace: 'nowrap' }}>
+                <span style={{ color: '#666', fontSize: 14 }}>选中数量</span>
+                <span style={{ fontSize: 16, fontWeight: 600 }}>{selectedSummary.count} 家</span>
+              </div>
               <div style={{ marginLeft: 'auto' }}>
                 <Popconfirm
                   title={`确认删除选中的 ${selectedRowKeys.length} 家供应商？`}
