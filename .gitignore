@@ -27,6 +27,7 @@ frontend/build-out/
 frontend/release/
 frontend/release-v135/
 frontend/release-v136/
+frontend/release-v137/
 
 # ----- OS -----
 .DS_Store
