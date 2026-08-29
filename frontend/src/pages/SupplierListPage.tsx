@@ -243,11 +243,11 @@ export default function SupplierListPage() {
         <div style={{
           background: selectedRowKeys.length > 0 ? '#e6f7ff' : '#fafafa',
           borderBottom: selectedRowKeys.length > 0 ? '1px solid #91d5ff' : '1px solid #f0f0f0',
-          padding: '10px 20px',
+          padding: '0 20px',
           display: 'flex',
           alignItems: 'center',
           gap: 32,
-          minHeight: 44,
+          height: 44,
         }}>
           <Checkbox
             checked={selectedRowKeys.length === suppliers.length && suppliers.length > 0}
@@ -271,7 +271,7 @@ export default function SupplierListPage() {
                   cancelText="取消"
                   okButtonProps={{ danger: true }}
                 >
-                  <Button danger icon={<DeleteOutlined />} loading={batchDeleting}>
+                  <Button danger size="small" icon={<DeleteOutlined />} loading={batchDeleting} style={{ height: 28, fontSize: 12, padding: '0 10px' }}>
                     批量删除（{selectedRowKeys.length}）
                   </Button>
                 </Popconfirm>
