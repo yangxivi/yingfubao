@@ -1,28 +1,40 @@
 {
-  "name": "yingfubao-frontend",
+  "name": "yingfubao",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.3.1",
+  "description": "应付宝 - 应付账款管理（桌面端）",
+  "author": "曦微",
   "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "electron:dev": "electron . --dev",
+    "electron:build": "vite build && electron-builder",
+    "electron:rebuild": "echo \"应付宝桌面端无原生模块，跳过 rebuild\""
   },
   "dependencies": {
     "@ant-design/icons": "^5.5.0",
+    "@supabase/supabase-js": "^2.45.0",
     "antd": "^5.22.0",
     "dayjs": "^1.11.13",
+    "electron-updater": "^6.3.9",
     "pdfjs-dist": "^4.10.38",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.28.0",
-    "@supabase/supabase-js": "^2.45.0"
+    "react-router-dom": "^6.28.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
     "typescript": "~5.6.2",
     "vite": "^6.0.0"
+  },
+  "optionalDependencies": {
+    "@esbuild/win32-x64": "^0.25.12"
   }
 }

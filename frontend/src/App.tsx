@@ -7,6 +7,7 @@ import { getCurrentUserId, detectAndLockAuthMode, syncCurrentUserToCloud, setAut
 import { initUserDB } from './lib/db';
 import { initAccountPeriodFromSession } from './lib/accountPeriod';
 import { setCloudStatus } from './lib/cloudStatus';
+import { isDesktop } from './lib/desktop-env';
 
 // 页面按需懒加载，避免首屏打包全部页面（含仪表盘图表、上传、OCR 逻辑）
 const LoginPage = lazy(() => import('./pages/LoginPage'));
@@ -58,11 +59,16 @@ export default function App() {
       // 2. 恢复账期设置
       initAccountPeriodFromSession();
 
-      // 3. 已登录则预热数据缓存（必须在渲染页面前完成，否则仪表盘首次全 0）
+      // 3. 桌面端每次启动都强制重新登录（不保留 token），保留 user 用于登录页显示
+      if (isDesktop()) {
+        localStorage.removeItem('token');
+      }
+
+      // 4. 已登录则预热数据缓存（必须在渲染页面前完成，否则仪表盘首次全 0）
       const token = localStorage.getItem('token');
       const userId = getCurrentUserId();
       if (token && userId) {
-        if ((status ?? 'uninitialized') === 'ready') {
+        if ((status ?? 'uninitialized') === 'ready' && !isDesktop()) {
           await withTimeout(syncCurrentUserToCloud(), 8000, '同步账号');
         }
         await withTimeout(initUserDB(userId), 15000, '预热数据');

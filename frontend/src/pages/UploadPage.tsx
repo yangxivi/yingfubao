@@ -65,8 +65,12 @@ export default function UploadPage() {
         const res = await invoiceApi.upload(options.file);
         options.onSuccess?.({});
         const inv = res.data as any;
-        const supName = inv.supplier_name || inv.seller_name || '未知';
-        message.success(`${options.file.name} 已识别，供应商「${supName}」已自动建档`);
+        const supName = inv.supplier_name || inv.seller_name;
+        if (supName) {
+          message.success(`${options.file.name} 已识别，供应商「${supName}」已自动建档`);
+        } else {
+          message.success(`${options.file.name} 已识别并保存`);
+        }
         setStats((s) => ({ ...s, success: s.success + 1 }));
         resultRef.current.success += 1;
       } catch (err: any) {

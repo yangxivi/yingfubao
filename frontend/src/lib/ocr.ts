@@ -1,13 +1,19 @@
-// 发票 OCR：前端把图片/PDF 发给 Supabase Edge Function（baidu-ocr），
-// 由函数调用「百度高精度通用文字识别（accurate_basic）」，返回文字后前端用正则+锚点提取字段。
+// 发票 OCR：统一使用百度高精度通用文字识别（accurate_basic）提取文字，
+// 再用正则 + 版面锚点解析出结构化字段。
 //
-// 与历史版本的区别：
-// - 移除 Tesseract.js（浏览器本地 OCR），完全改用百度高精度，识别率更高
-// - 保留 PDF 支持（pdfjs 渲染成图片逐页发百度）
-// - 字段提取逻辑（parseStructured 等）完全复用，这是核心资产，不动
+// 调用路径：
+// - 桌面端且配置了自有百度 Key：主进程直连百度（规避 CORS、不占共享额度）。
+// - 其它情况：通过 Supabase Edge Function（baidu-ocr）使用共享百度 Key，共享额度 800 次/月。
+//
+// 其它：
+// - PDF 支持：pdfjs 渲染成图片后逐页送百度。
+// - 字段提取逻辑（parseStructured 等）完全复用，这是核心资产，不动。
+// - 注：早期版本内置过本机离线 RapidOCR（PP-OCRv4）引擎，现已移除。
 
 import { supabase } from './supabase';
 import { getAuthMode } from './auth';
+import { isDesktop, electronAPI, getBaiduOcrConfig } from './desktop-env';
+import { setOcrQuota } from './ocr-quota';
 
 export interface OcrResult {
   invoice_no: string;
@@ -22,6 +28,11 @@ export interface OcrResult {
   tax_rate: string;
   items: any[];
   raw_text: string;
+}
+
+export interface OcrQuota {
+  used: number;
+  total: number;
 }
 
 // ===== 图片/Canvas → base64（去 data: 前缀，百度要求纯 base64）=====
@@ -58,7 +69,6 @@ async function imageToCompressedBase64(file: File, maxSide = 2000): Promise<stri
 }
 
 // PDF → 每页渲染成 canvas（百度 OCR 不直接收 PDF，需前端转图）
-// pdfjs 体积较大（~1MB），改为仅在处理 PDF 时动态 import，避免被打进首屏主包
 async function pdfToImages(file: File): Promise<HTMLCanvasElement[]> {
   const pdfjsLib = await import('pdfjs-dist');
   const workerSrc = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
@@ -82,19 +92,104 @@ async function pdfToImages(file: File): Promise<HTMLCanvasElement[]> {
   return out;
 }
 
-// ===== 调用 Supabase Edge Function（baidu-ocr）=====
+// ===== 调用 Supabase Edge Function（baidu-ocr）获取共享额度 =====
+export async function fetchSharedOcrQuota(): Promise<OcrQuota | null> {
+  // 桌面端优先走主进程代理，规避 app:// 协议下的 CORS 拦截
+  const api = electronAPI();
+  if (isDesktop() && api?.ocrShared) {
+    try {
+      const r = await api.ocrShared({ action: 'quota' });
+      const q = r?.data?.quota as OcrQuota | null;
+      if (q) {
+        setOcrQuota(q);
+        return q;
+      }
+    } catch (e: any) {
+      console.warn('[ocr-quota] 主进程代理获取失败：', e?.message || e);
+    }
+  }
+
+  if (!supabase) return null;
+  try {
+    const { data, error } = await supabase.functions.invoke('baidu-ocr', {
+      body: { action: 'quota' },
+    });
+    if (error) {
+      console.warn('[ocr-quota] 获取失败：', error.message);
+      return null;
+    }
+    const q = data?.quota as OcrQuota | null;
+    if (q) setOcrQuota(q);
+    return q;
+  } catch (e: any) {
+    console.warn('[ocr-quota] 获取失败：', e?.message || e);
+    return null;
+  }
+}
+
+// ===== 调用百度 OCR =====
 async function callBaiduOcr(base64: string): Promise<string> {
+  // 桌面端且用户配置了自有百度 Key：主进程直连百度，规避 CORS、不占共享额度
+  if (isDesktop()) {
+    const cfg = getBaiduOcrConfig();
+    if (cfg) {
+      const api = electronAPI();
+      if (api?.baiduOcr) {
+        return (await api.baiduOcr(base64, cfg.apiKey, cfg.secretKey)) || '';
+      }
+    }
+
+    // 桌面端未配自有 Key：走主进程代理调用共享 baidu-ocr（规避渲染进程 CORS）
+    const api = electronAPI();
+    if (api?.ocrShared) {
+      try {
+        const r = await api.ocrShared({ image: base64 });
+        const d = r?.data;
+        if (d?.quota) setOcrQuota(d.quota);
+        if (d?.error) {
+          throw new Error(d.error);
+        }
+        if (r?.status && r.status >= 400) {
+          throw new Error(d?.error || `共享 OCR 调用失败（HTTP ${r.status}）`);
+        }
+        return d?.raw_text || '';
+      } catch (e: any) {
+        // 代理失败回退到下方 supabase 直连（若可用）
+        console.warn('[ocr] 主进程代理失败，回退：', e?.message || e);
+      }
+    }
+  }
+
   if (!supabase) {
     throw new Error(
       '未配置 Supabase（百度 OCR 不可用）。请在 frontend/.env 填写 VITE_SUPABASE_URL 与 VITE_SUPABASE_ANON_KEY',
     );
   }
+
   const { data, error } = await supabase.functions.invoke('baidu-ocr', {
     body: { image: base64 },
   });
-  if (error) throw new Error('调用百度 OCR 失败：' + (error.message || '网络错误'));
-  if (data?.error) throw new Error('百度 OCR 返回错误：' + data.error);
+
+  if (error) {
+    throw new Error('调用百度 OCR 失败：' + (error.message || '网络错误'));
+  }
+  if (data?.error) {
+    // 共享额度用完时，Edge Function 返回 429 + quota
+    if (data.quota) setOcrQuota(data.quota);
+    throw new Error(data.error);
+  }
+  if (data?.quota) setOcrQuota(data.quota);
   return data?.raw_text || '';
+}
+
+/**
+ * 单页识别路由（仅桌面端使用）：
+ * - 桌面端若用户配置了自有百度 Key，主进程直连百度。
+ * - 否则通过 Supabase Edge Function 使用共享百度 Key（受 800 次/月配额限制）。
+ */
+async function ocrPage(b64: string): Promise<string> {
+  const text = await callBaiduOcr(b64);
+  return text || '';
 }
 
 // ===== 模糊匹配工具（百度也可能误识别个别锚点词，容错）=====
@@ -160,7 +255,7 @@ function companyNames(lines: string[]): string[] {
       (s.includes('公司') || s.includes('厂') || s.includes('有限') || s.includes('中心')) &&
       s.length >= 4 &&
       s.length <= 40 &&
-      !/^[0-9\s年明月日¥￥]+$/.test(s)
+      !/^[0-9\s年明月日¥￥]+$/ .test(s)
     ) {
       names.push(s.trim());
     }
@@ -343,21 +438,9 @@ function parseStructured(full: string, lines: string[]): OcrResult {
   }
 
   // ---- 6. 税号（v4: 同行/近行列位置顺序配对）----
-  // 前三个版本全部失败的原因分析：
-  // v1 行索引区域：左右并排内容合并到同一行时，两个税号都在"购买方之后"→全分给buyer
-  // v2 字符距离(full.indexOf)：indexOf只返回首次出现位置，同名重复时错位
-  // v3 行级邻近度：两栏合并同行时，两个税号到两个公司名的行距离相等→无法区分
-  //
-  // v4 核心洞察：增值税发票版面上，名称和税号是上下对齐的。
-  // OCR输出中，同一行(或相邻行)里的多个"名称："和"纳税人识别号："
-  // 按列位置(colPos)从左到右的顺序，与物理上的左右顺序一致——
-  // 第1个名称(左边=购买方)对应第1个税号(左边=购买方)，
-  // 第2个名称(右边=销售方)对应第2个税号(右边=销售方)。
-  // 这是发票版面的物理结构约束，比任何距离/区域启发式都可靠。
   let seller_tax_id = '';
   let buyer_tax_id = '';
 
-  // 用 exec 循环收集每行中所有 "名称：xxx" 匹配项（含列位置）
   interface NameEntry { name: string; lineIdx: number; colPos: number }
   const nameEntries: NameEntry[] = [];
   const nameRe = /名称[：:\s]*([^\n\r：:]{4,40})/gi;
@@ -371,7 +454,6 @@ function parseStructured(full: string, lines: string[]): OcrResult {
     }
   }
 
-  // 用 exec 循环收集每行中所有 "纳税人识别号：xxx" 匹配项（含列位置）
   interface TaxEntry { id: string; lineIdx: number; colPos: number }
   const taxEntries: TaxEntry[] = [];
   const taxRe = /(?:纳税人识别号|纳税人识别号码|统一社会信用代码|信用代码|纳税号|识别号)[号碼：:\s]*([0-9A-HJ-NPQRTUWXY]{18})/gi;
@@ -382,35 +464,28 @@ function parseStructured(full: string, lines: string[]): OcrResult {
     }
   }
 
-  // 核心配对逻辑
   if (nameEntries.length >= 2 && taxEntries.length >= 2) {
-    // 找名称最集中的连续区域（通常1-2行包含两个名称）
     const nameLineIdxs = nameEntries.map(e => e.lineIdx);
     const nameMinLine = Math.min(...nameLineIdxs);
     const nameMaxLine = Math.max(...nameLineIdxs);
     const nameRegion = nameEntries.filter(e => e.lineIdx >= nameMinLine && e.lineIdx <= nameMaxLine + 1);
 
-    // 找税号最集中的连续区域（通常在名称下方1-3行内）
     const taxLineIdxs = taxEntries.map(e => e.lineIdx);
     const taxMinLine = Math.min(...taxLineIdxs);
     const taxMaxLine = Math.max(...taxLineIdxs);
     const taxRegion = taxEntries.filter(e => e.lineIdx >= taxMinLine && e.lineIdx <= taxMaxLine + 1);
 
-    // 各区域内按 colPos 排序（从左到右 = 从购买方到销售方）
     const sortedNames = [...nameRegion].sort((a, b) => a.colPos - b.colPos);
     const sortedTaxes = [...taxRegion].sort((a, b) => a.colPos - b.colPos);
 
-    // 按顺序一一配对，然后判断每个 name 是 seller 还是 buyer
     const pairCount = Math.min(sortedNames.length, sortedTaxes.length);
     for (let p = 0; p < pairCount; p++) {
       const n = sortedNames[p].name;
       const t = sortedTaxes[p].id;
 
-      // 精确匹配
       if (n === seller_name && !seller_tax_id) { seller_tax_id = t; continue; }
       if (n === buyer_name && !buyer_tax_id) { buyer_tax_id = t; continue; }
 
-      // 容差匹配：互相包含且长度相近（OCR可能多/少几个字）
       const matchSeller = seller_name && (
         n.includes(seller_name) || seller_name.includes(n)
       ) && Math.abs(n.length - seller_name.length) <= 4;
@@ -423,7 +498,6 @@ function parseStructured(full: string, lines: string[]): OcrResult {
     }
   }
 
-  // 兜底1：如果配对没找到（比如只有1个名称或1个税号），回退到行索引区域
   if ((!seller_tax_id || !buyer_tax_id) && taxEntries.length > 0) {
     const sIdx = findLineIndex(lines, '销售方');
     const bIdx = findLineIndex(lines, '购买方');
@@ -456,7 +530,6 @@ function parseStructured(full: string, lines: string[]): OcrResult {
     }
   }
 
-  // 最终兜底：全局所有税号按出现顺序分配
   if (!seller_tax_id || !buyer_tax_id) {
     const uniqGlobal = Array.from(new Set(taxEntries.map((t) => t.id)));
     if (!buyer_tax_id && uniqGlobal[0]) buyer_tax_id = uniqGlobal[0];
@@ -483,6 +556,46 @@ export async function recognizeInvoice(
   file: File,
   onProgress?: (current: number, total: number) => void,
 ): Promise<OcrResult> {
+  // ===== 桌面端：自有百度 Key 直连；否则走 Supabase Edge Function 共享 Key =====
+  if (isDesktop()) {
+    const isPdf =
+      file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+
+    const pagesText: string[] = [];
+
+    if (isPdf) {
+      try {
+        const canvases = await pdfToImages(file);
+        for (let i = 0; i < canvases.length; i++) {
+          const b64 = canvasToBase64(canvases[i]);
+          pagesText.push(await ocrPage(b64));
+          onProgress?.(i + 1, canvases.length);
+        }
+      } catch (e: any) {
+        throw new Error('PDF 解析失败：' + (e.message || '文件可能损坏或加密'));
+      }
+    } else {
+      const b64 = await imageToCompressedBase64(file);
+      pagesText.push(await ocrPage(b64));
+      onProgress?.(1, 1);
+    }
+
+    const full = pagesText.join('\n');
+    const lines = full
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean);
+
+    if (lines.length === 0) {
+      throw new Error(
+        '百度 OCR 未能识别出文字。请检查图片是否清晰、完整，或换一张图片重试。',
+      );
+    }
+
+    return parseStructured(full, lines);
+  }
+
+  // ===== 非桌面（网站端）：原云端逻辑 =====
   // 本地模式（未配置/未连接 Supabase）下没有云端百度 OCR 能力。
   // 优雅降级：返回空结果，上传流程据此创建空白发票供用户手动填写，
   // 避免本地模式下「上传发票」直接崩溃（此前会抛「未配置 Supabase」）。

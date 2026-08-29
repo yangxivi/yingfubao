@@ -8,12 +8,14 @@ import { initUserDB, clearUserCache, initLocalCache } from './db';
 import type { User } from './db';
 import { setAccountPeriod } from './accountPeriod';
 import { probeSupabase, type SupabaseStatus } from './supabase-init';
+import { isDesktop, electronAPI } from './desktop-env';
+import { generateAvatar } from './avatar';
 
 const SESSION_KEY = 'token';
 const USER_KEY = 'user';
 
-// 运行模式：云端 / 本地
-let authMode: 'cloud' | 'local' = 'cloud';
+// 运行模式：云端 / 本地 / 桌面端（Electron 本地离线）
+let authMode: 'cloud' | 'local' | 'desktop' = 'cloud';
 
 /** 检查本地模式是否有已注册的用户（供登录页显示引导） */
 export function hasLocalUsers(): boolean {
@@ -22,7 +24,7 @@ export function hasLocalUsers(): boolean {
 }
 
 /** 获取当前鉴权模式 */
-export function getAuthMode(): 'cloud' | 'local' {
+export function getAuthMode(): 'cloud' | 'local' | 'desktop' {
   return authMode;
 }
 
@@ -77,6 +79,7 @@ export function publicUser(u: User) {
     username: u.username,
     company_name: u.company_name,
     email: u.email,
+    avatar: u.avatar || generateAvatar(u.username),
     account_period: u.account_period ?? 90,
   };
 }
@@ -121,6 +124,7 @@ async function cloudRegister(data: {
     .maybeSingle();
   if (existing) throw new Error('用户名已存在');
 
+  const avatar = generateAvatar(data.username);
   const { data: row, error } = await supabase
     .from('users')
     .insert({
@@ -128,6 +132,7 @@ async function cloudRegister(data: {
       password_hash: await hashPassword(data.password),
       company_name: data.company_name || '',
       email: data.email || '',
+      avatar,
     })
     .select()
     .single();
@@ -198,6 +203,7 @@ function readLocalUsers(): User[] {
         passwordHash: u.passwordHash,
         company_name: u.company_name || '',
         email: u.email || '',
+        avatar: u.avatar || generateAvatar(u.username),
         account_period: u.account_period ?? 90,
         created_at: u.created_at || new Date().toISOString(),
       }));
@@ -230,6 +236,7 @@ function rowToUser(row: any): User {
     passwordHash: row.password_hash,
     company_name: row.company_name,
     email: row.email,
+    avatar: row.avatar || generateAvatar(row.username),
     account_period: (row as any).account_period ?? 90,
     created_at: row.created_at,
   };
@@ -250,6 +257,7 @@ async function localRegister(data: {
     passwordHash: await hashPassword(data.password),
     company_name: data.company_name || '',
     email: data.email || '',
+    avatar: generateAvatar(data.username),
     account_period: 90,
     created_at: new Date().toISOString(),
   };
@@ -298,12 +306,92 @@ async function initLocalDB(userId: string): Promise<void> {
 
 // ===== 统一入口（自动选择模式）=====
 
+/** 桌面端：查询是否已有本地账号 */
+export async function desktopHasUsers(): Promise<boolean> {
+  const api = electronAPI();
+  if (!api) return false;
+  const users = await api.userList();
+  return users.length > 0;
+}
+
+async function desktopRegister(data: {
+  username: string;
+  password: string;
+  company_name?: string;
+}): Promise<{ access_token: string; user: ReturnType<typeof publicUser> }> {
+  const api = electronAPI();
+  if (!api) throw new Error('桌面端 API 不可用');
+  const avatar = generateAvatar(data.username);
+  const created = await api.userCreate({
+    username: data.username,
+    password_hash: await hashPassword(data.password),
+    company_name: data.company_name || '',
+    avatar,
+  });
+  const user: User = {
+    id: created.id,
+    username: created.username,
+    passwordHash: '',
+    company_name: created.company_name || '',
+    email: '',
+    avatar,
+    account_period: created.account_period ?? 90,
+    created_at: new Date().toISOString(),
+  };
+  setSession(user);
+  setAccountPeriod(user.account_period);
+  await initUserDB(created.id);
+  return { access_token: makeToken(created.id), user: publicUser(user) };
+}
+
+async function desktopLogin(data: {
+  username: string;
+  password: string;
+}): Promise<{ access_token: string; user: ReturnType<typeof publicUser> }> {
+  const api = electronAPI();
+  if (!api) throw new Error('桌面端 API 不可用');
+  const verified = await api.userVerify({
+    username: data.username,
+    password: data.password,
+  });
+  const user: User = {
+    id: verified.id,
+    username: verified.username,
+    passwordHash: '',
+    company_name: verified.company_name || '',
+    email: '',
+    avatar: verified.avatar || generateAvatar(verified.username),
+    account_period: verified.account_period ?? 90,
+    created_at: new Date().toISOString(),
+  };
+  setSession(user);
+  setAccountPeriod(user.account_period);
+  await initUserDB(verified.id);
+  return { access_token: makeToken(verified.id), user: publicUser(user) };
+}
+
+/** 桌面端：返回当前已建立的会话用户，未登录则抛错（由登录页处理）。 */
+async function desktopSession(): Promise<{ access_token: string; user: ReturnType<typeof publicUser> }> {
+  const raw = localStorage.getItem(USER_KEY);
+  if (!raw) throw new Error('未登录');
+  const u = JSON.parse(raw);
+  setAccountPeriod(u.account_period ?? 90);
+  const id = u.id;
+  await initUserDB(id);
+  return { access_token: localStorage.getItem(SESSION_KEY) || '', user: u };
+}
+
 /**
  * 探测并锁定鉴权模式。
  * 应在 App 启动时调用一次，之后 getAuthMode() 返回锁定结果。
  * 返回探测状态供 UI 决定是否显示 SetupWizard。
  */
 export async function detectAndLockAuthMode(): Promise<SupabaseStatus> {
+  if (isDesktop()) {
+    // 桌面端：无需探测云端，但也不再自动创建默认用户，必须登录/注册
+    authMode = 'desktop';
+    return 'ready';
+  }
   const result = await probeSupabase();
   if (result.status === 'ready') {
     authMode = 'cloud';
@@ -347,6 +435,7 @@ export async function registerUser(data: {
   company_name?: string;
   email?: string;
 }): Promise<{ access_token: string; user: ReturnType<typeof publicUser> }> {
+  if (authMode === 'desktop') return desktopRegister(data);
   if (authMode === 'cloud') {
     return cloudRegister(data);
   }
@@ -357,6 +446,7 @@ export async function loginUser(data: {
   username: string;
   password: string;
 }): Promise<{ access_token: string; user: ReturnType<typeof publicUser> }> {
+  if (authMode === 'desktop') return desktopLogin(data);
   if (authMode === 'cloud') {
     // 云端模式下如果表突然不可用，自动降级
     try {
@@ -399,6 +489,11 @@ export async function loginUser(data: {
 export async function getMe() {
   const id = getCurrentUserId();
   if (!id) throw new Error('未登录');
+  if (authMode === 'desktop') {
+    const u = getCurrentUser();
+    if (!u) throw new Error('未登录');
+    return u;
+  }
   if (authMode === 'cloud') {
     const { data: row, error } = await supabase.from('users').select('*').eq('id', id).maybeSingle();
     if (error || !row) throw new Error('未登录');
@@ -439,6 +534,19 @@ export async function updateAccountPeriod(period: number): Promise<void> {
     }
   }
   setAccountPeriod(period);
+
+  // 1.5 桌面端：同步到本地 SQLite 用户表
+  if (isDesktop()) {
+    const api = electronAPI();
+    if (api) {
+      try {
+        await api.updateUserPeriod(id, period);
+      } catch (e: any) {
+        console.warn('账期本地保存失败:', e?.message || e);
+      }
+    }
+    return;
+  }
 
   // 2. 云端模式：同步到 Supabase users 表
   if (authMode === 'cloud') {

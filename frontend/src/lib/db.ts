@@ -7,6 +7,8 @@
 
 import { supabase } from './supabase';
 import { getAuthMode } from './auth';
+import { isDesktop, electronAPI } from './desktop-env';
+import { generateAvatar } from './avatar';
 
 export interface User {
   id: string;
@@ -14,6 +16,7 @@ export interface User {
   passwordHash: string;
   company_name: string;
   email: string;
+  avatar: string; // 用户名首字头像 data URL
   account_period: number; // 账期天数，默认 90
   created_at: string;
 }
@@ -80,6 +83,8 @@ let cacheUserId: string | null = null;
 let syncChain: Promise<void> = Promise.resolve();
 // 是否处于本地模式
 let isLocalMode = false;
+// 是否处于桌面端（Electron）模式
+let isDesktopMode = false;
 
 function emptyDB(): DBShape {
   return { users: [], suppliers: [], invoices: [], seq: { users: 1, suppliers: 1, invoices: 1 } };
@@ -91,7 +96,10 @@ export function readDB(): DBShape {
 
 export function writeDB(db: DBShape): void {
   cache = db;
-  if (isLocalMode && cacheUserId) {
+  if (isDesktopMode) {
+    // 桌面端：持久化到本地 SQLite（经 IPC，主进程落盘 + 图片写磁盘文件）
+    persistDesktop();
+  } else if (isLocalMode && cacheUserId) {
     // 本地模式：同时持久化到 localStorage
     try {
       localStorage.setItem(LOCAL_DB_KEY_PREFIX + cacheUserId, JSON.stringify(db));
@@ -244,9 +252,63 @@ async function loadCloud(userId: string): Promise<DBShape> {
   return { users: [], suppliers, invoices, seq: { users: 1, suppliers: 1, invoices: 1 } };
 }
 
+// ===== 桌面端（Electron）：本地 SQLite 持久化（经 IPC）=====
+// 复用与云端模式一致的「内存缓存 + 异步持久化」模型，仅把持久化后端从 Supabase
+// 换成主进程内的 SQLite（离线、无 localStorage 5MB 容量上限、他人数据不进云库）。
+// 图片以磁盘文件存于 %APPDATA%/YingFuBao/images/<id>.jpg，SQLite 仅存元数据。
+
+let persistChain: Promise<void> = Promise.resolve();
+
+async function loadDesktop(userId: string): Promise<DBShape> {
+  const api = electronAPI();
+  if (!api) return emptyDB();
+  const data = await api.dbLoad(userId);
+  const users = (data.users || []).map((r: any) => ({
+    id: r.id,
+    username: r.username,
+    passwordHash: r.password_hash,
+    company_name: r.company_name || '',
+    email: r.email || '',
+    avatar: r.avatar || generateAvatar(r.username),
+    account_period: r.account_period ?? 90,
+    created_at: r.created_at,
+  }));
+  const suppliers = (data.suppliers || []).map(rowToSupplier);
+  // image_data 由主进程剥离（已落盘为图片文件），此处恒为空，loadImage 改为读磁盘
+  const invoices = (data.invoices || []).map(rowToInvoice);
+  return { users, suppliers, invoices, seq: { users: 1, suppliers: 1, invoices: 1 } };
+}
+
+function persistDesktop(): void {
+  if (!cache || !cacheUserId) return;
+  const api = electronAPI();
+  if (!api) return;
+  const userId = cacheUserId;
+  const payload = {
+    suppliers: cache.suppliers.filter((s) => s.userId === userId).map(supplierToRow),
+    invoices: cache.invoices.filter((i) => i.userId === userId).map(invoiceToRow),
+  };
+  persistChain = persistChain.then(async () => {
+    try {
+      await api.dbSave(payload);
+    } catch (e) {
+      console.warn('[desktop] 本地数据保存失败', e);
+    }
+  });
+}
+
 // ===== 初始化：加载云端 + 迁移本地旧数据（云端模式） / 加载 localStorage（本地模式）=====
 export async function initUserDB(userId: string): Promise<void> {
   cacheUserId = userId;
+
+  if (isDesktop()) {
+    // 桌面端：从本地 SQLite 加载（图片以磁盘文件为准，image_data 留空）
+    isDesktopMode = true;
+    isLocalMode = false;
+    cache = await loadDesktop(userId);
+    return;
+  }
+
   isLocalMode = getAuthMode() === 'local';
 
   if (isLocalMode) {
@@ -293,7 +355,9 @@ export function clearUserCache(): void {
   cache = null;
   cacheUserId = null;
   isLocalMode = false;
+  isDesktopMode = false;
   syncChain = Promise.resolve();
+  persistChain = Promise.resolve();
 }
 
 // 首次使用时，把该账号在 localStorage 中的旧数据合并迁移到云端（按业务键去重），之后清除本地旧库
@@ -422,6 +486,17 @@ export function isBackupFile(obj: unknown): obj is BackupFile {
 
 /** 导入备份：替换当前用户在云端的供应商与发票（先清除再写入），并修正引用关系 */
 export async function importUserBackup(userId: string, backup: BackupFile): Promise<void> {
+  if (isDesktop()) {
+    const api = electronAPI();
+    if (api) {
+      await api.dbReplace({
+        suppliers: backup.data.suppliers.map(supplierToRow),
+        invoices: backup.data.invoices.map(invoiceToRow),
+      });
+      cache = await loadDesktop(userId);
+    }
+    return;
+  }
   await supabase.from('suppliers').delete().eq('user_id', userId);
   await supabase.from('invoices').delete().eq('user_id', userId);
 

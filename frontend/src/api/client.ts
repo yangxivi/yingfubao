@@ -10,6 +10,7 @@ import { recognizeInvoice } from '../lib/ocr';
 import { getAccountPeriod } from '../lib/accountPeriod';
 import { getAuthMode } from '../lib/auth';
 import { supabase } from '../lib/supabase';
+import { isDesktop, electronAPI } from '../lib/desktop-env';
 import dayjs from 'dayjs';
 
 // ------- 错误处理：兼容 axios 风格 -------
@@ -233,6 +234,10 @@ export const invoiceApi = {
     guard(async () => {
       const userId = getUserId();
       const result = await recognizeInvoice(file, onProgress);
+      // 识别为空时拒绝入库，避免产生空白记录污染列表
+      if (!result.raw_text || result.raw_text.trim().length === 0) {
+        fail('未能识别出发票内容。请检查图片清晰度，或到「设置」开启百度高精度增强。');
+      }
       // 每张上传的图片都独立入库（不同图片=不同物理发票，不去重）
       const supplierId = ensureSupplier(userId, result.seller_name, result.seller_tax_id);
       // 将图片转为压缩后的 base64 存储（避免 localStorage 超限）
@@ -369,6 +374,14 @@ export const invoiceApi = {
       const db = readDB();
       const inv = db.invoices.find((i) => i.id === id && i.userId === userId);
       if (inv?.image_data) return inv.image_data;
+      if (isDesktop()) {
+        const api = electronAPI();
+        if (api) {
+          const data = await api.readImage(id);
+          if (data && inv) inv.image_data = data; // 回填缓存，避免重复读盘
+          return data || '';
+        }
+      }
       if (getAuthMode() === 'cloud') {
         const { data, error } = await supabase
           .from('invoices')
@@ -581,7 +594,7 @@ export const dashboardApi = {
           total_amount: i.total_amount,
           status: i.status,
           payment_date: i.payment_date,
-          image_data: i.image_data ? true : false,
+          image_data: !!i.file_name,
         }));
     }),
 

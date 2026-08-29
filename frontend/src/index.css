@@ -439,10 +439,16 @@ body {
   font-size: 26px;
 }
 
+/* 菜单栏：绝对居中于导航栏，不受左侧品牌区 / 右侧工具区宽度变化影响。
+   此前用 space-between 布局，右侧每多一个元素菜单就会整体左移，导致「菜单栏偏了」。 */
 .yb-nav-links {
   display: flex;
   gap: 4px;
   height: 100%;
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform: translateX(-50%);
 }
 
 .yb-nav-link {
@@ -592,6 +598,12 @@ body {
   cursor: pointer;
   background: transparent;
   border: none;
+}
+
+/* 中等宽度：绝对居中的菜单会与右侧工具区重叠，提前折叠为汉堡菜单 + 抽屉 */
+@media (max-width: 1180px) {
+  .yb-nav-links { display: none !important; }
+  .yb-nav-toggle { display: inline-flex !important; }
 }
 
 @media (max-width: 768px) {

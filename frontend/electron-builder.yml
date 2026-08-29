@@ -1,0 +1,51 @@
+appId: com.xiwei.yingfubao
+productName: 应付宝
+copyright: Copyright © 2026 曦微
+artifactName: yingfubao-setup-${version}.${ext}
+
+directories:
+  output: release
+  buildResources: build
+
+# 无原生模块（本地离线 OCR 引擎已移除），保持 npmRebuild 关闭以加速打包
+npmRebuild: false
+
+# 仅打包 Electron 主进程/预加载脚本与 Vite 构建产物，避免把整个源码目录打进 asar
+files:
+  - "dist/**/*"
+  - "electron/**/*"
+  - "build/**/*"
+  - "package.json"
+
+# electron-updater 需在 asar 之外才能正常读写更新文件
+asar: true
+asarUnpack:
+  - "**/node_modules/electron-updater/**/*"
+
+win:
+  target:
+    - nsis
+  # 品牌图标（build/icon.ico），用于安装包、桌面快捷方式和程序窗口
+  icon: build/icon.ico
+  requestedExecutionLevel: asInvoker
+
+nsis:
+  oneClick: false
+  perMachine: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: 应付宝
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  include: build/installer.nsh
+  # 中文安装向导语言
+  installerLanguages:
+    - zh_CN
+
+# 自动更新：推新 tag 到 GitHub Releases 后，桌面端自动提示升级
+publish:
+  provider: github
+  owner: yangxivi
+  repo: yingfubao
+  releaseType: release

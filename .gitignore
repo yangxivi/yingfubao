@@ -20,6 +20,11 @@ frontend/dist/
 npm-debug.log*
 yarn-error.log*
 *.tsbuildinfo
+npm-cache/
+frontend/dist_bak*/
+frontend/build-out/
+# 安装包/发布产物走 GitHub Release，不进 git 仓库
+frontend/release/
 
 # ----- OS -----
 .DS_Store
