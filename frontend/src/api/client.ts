@@ -10,6 +10,7 @@ import { recognizeInvoice } from '../lib/ocr';
 import { getAccountPeriod } from '../lib/accountPeriod';
 import { getAuthMode } from '../lib/auth';
 import { supabase } from '../lib/supabase';
+import { incrementPersonalOcrUsed } from '../lib/ocr-quota';
 import { isDesktop, electronAPI } from '../lib/desktop-env';
 import dayjs from 'dayjs';
 
@@ -238,6 +239,8 @@ export const invoiceApi = {
       if (!result.raw_text || result.raw_text.trim().length === 0) {
         fail('未能识别出发票内容。请检查图片清晰度，或到「设置」开启百度高精度增强。');
       }
+      // 个人 OCR 计数 +1（无论自有 Key 还是共享 Key，只要识别成功就计数）
+      incrementPersonalOcrUsed(authLib.getCurrentUserId());
       // 每张上传的图片都独立入库（不同图片=不同物理发票，不去重）
       const supplierId = ensureSupplier(userId, result.seller_name, result.seller_tax_id);
       // 将图片转为压缩后的 base64 存储（避免 localStorage 超限）

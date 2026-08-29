@@ -74,7 +74,7 @@ export default function UploadPage() {
         }
         setStats((s) => ({ ...s, success: s.success + 1 }));
         resultRef.current.success += 1;
-        // 共享 OCR 额度即时刷新（自有 Key 账号此调用会静默失败，不影响流程）
+        // 共享 OCR 额度即时刷新（自有 Key 账号不消耗共享额度，此调用会静默失败，不影响流程）
         fetchSharedOcrQuota().catch(() => {});
       } catch (err: any) {
         options.onError?.(err);
