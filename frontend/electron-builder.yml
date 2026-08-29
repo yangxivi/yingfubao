@@ -4,7 +4,7 @@ copyright: Copyright © 2026 曦微
 artifactName: yingfubao-setup-${version}.${ext}
 
 directories:
-  output: release-v1311
+  output: release
   buildResources: build
 
 # 无原生模块（本地离线 OCR 引擎已移除），保持 npmRebuild 关闭以加速打包
