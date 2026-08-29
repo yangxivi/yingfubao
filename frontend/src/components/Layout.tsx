@@ -314,8 +314,8 @@ export default function Layout() {
           )}
 
           {/* OCR 额度指示器：桌面端 / 网站端（已连 Supabase）始终显示。
-              用户配置了自有百度 Key（或 XIVI 账号）显示「自有 Key · 不限额度」；
-              其它账号显示「已调用 X / 800 次」（每月 1 日自动清零）。 */}
+              只有 XIVI 账号显示「自有 Key · 不限额度」；
+              其它账号始终显示「已调用 X / 800 次」（每月 1 日自动清零）。 */}
           {!isLocal && (
             <div
               className="yb-nav-hide-mobile"
@@ -328,15 +328,15 @@ export default function Layout() {
                 padding: '2px 10px',
                 borderRadius: 12,
                 cursor: isDesktopMode ? 'pointer' : 'default',
-                background: (isOwnerUser || baiduConfigured) ? '#e6f4ff' : isQuotaExhausted(quota) ? '#fff1f0' : '#f6ffed',
-                color: (isOwnerUser || baiduConfigured) ? '#1677ff' : isQuotaExhausted(quota) ? '#cf1322' : '#389e0d',
-                border: `1px solid ${(isOwnerUser || baiduConfigured) ? '#91caff' : isQuotaExhausted(quota) ? '#ffa39e' : '#b7eb8f'}`,
+                background: isOwnerUser ? '#e6f4ff' : isQuotaExhausted(quota) ? '#fff1f0' : '#f6ffed',
+                color: isOwnerUser ? '#1677ff' : isQuotaExhausted(quota) ? '#cf1322' : '#389e0d',
+                border: `1px solid ${isOwnerUser ? '#91caff' : isQuotaExhausted(quota) ? '#ffa39e' : '#b7eb8f'}`,
                 userSelect: 'none',
                 minWidth: 120,
               }}
               title={
-                (isOwnerUser || baiduConfigured)
-                  ? '正在使用自有百度 OCR Key，不占用共享额度'
+                isOwnerUser
+                  ? 'XIVI 自有 Key，不占用共享额度'
                   : isQuotaExhausted(quota)
                     ? '共享额度已用完，点击配置自己的百度 Key'
                     : `共享百度 OCR 额度：本月已调用 ${quota?.used ?? 0} / ${quota?.total ?? 800} 次，每月 1 日自动清零重新统计`
@@ -344,7 +344,7 @@ export default function Layout() {
             >
               <ApiOutlined />
               <span>
-                {(isOwnerUser || baiduConfigured)
+                {isOwnerUser
                   ? '自有 Key · 不限额度'
                   : `已调用 ${quota?.used ?? 0} / ${quota?.total ?? 800} 次`}
               </span>
