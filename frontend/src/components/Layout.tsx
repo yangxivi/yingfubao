@@ -26,7 +26,7 @@ import { exportUserBackup, importUserBackup, isBackupFile } from '../lib/db';
 import { getCloudStatus } from '../lib/cloudStatus';
 import { isDesktop, electronAPI, getBaiduOcrConfig, setBaiduOcrConfig, hasBaiduOcrConfig } from '../lib/desktop-env';
 import { fetchSharedOcrQuota } from '../lib/ocr';
-import { getOcrQuota, subscribeOcrQuota, isQuotaExhausted, getPersonalOcrUsed, subscribePersonalOcrUsed } from '../lib/ocr-quota';
+import { getOcrQuota, subscribeOcrQuota, isQuotaExhausted } from '../lib/ocr-quota';
 import type { OcrQuota } from '../lib/ocr-quota';
 import SetupWizard from './SetupWizard';
 import UserProfileModal from './UserProfileModal';
@@ -59,16 +59,12 @@ export default function Layout() {
   const [quota, setQuota] = useState<OcrQuota | null>(
     getOcrQuota() ?? { used: 0, total: 800 },
   );
-  const [personalUsed, setPersonalUsed] = useState<number>(() => getPersonalOcrUsed(getCurrentUserId()));
   const cloudStatus = getCloudStatus();
   const isLocal = !isDesktopMode && (getAuthMode() === 'local' || cloudStatus === 'uninitialized');
 
   // 订阅共享 OCR 额度（OCR 调用后会自动刷新）
   useEffect(() => {
     const unsubscribeQuota = subscribeOcrQuota((q) => setQuota(q));
-    const unsubscribePersonal = subscribePersonalOcrUsed((uid, used) => {
-      if (uid === getCurrentUserId()) setPersonalUsed(used);
-    });
     let timer: ReturnType<typeof setInterval> | undefined;
     // 桌面端或网站端只要连了 Supabase 就主动查一次，并每 60 秒刷新
     if (!isLocal) {
@@ -77,7 +73,6 @@ export default function Layout() {
     }
     return () => {
       unsubscribeQuota();
-      unsubscribePersonal();
       if (timer) clearInterval(timer);
     };
   }, [isLocal]);

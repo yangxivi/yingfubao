@@ -139,12 +139,22 @@ function setupAutoUpdater() {
       type: 'info', title: '发现新版本', message: '应付宝桌面端有新版本，正在后台下载…',
     });
   });
-  autoUpdater.on('update-downloaded', () => {
+  autoUpdater.on('update-downloaded', (event, releaseNotes, releaseName, releaseDate, updateURL, downloadedFile) => {
     dialog.showMessageBox(mainWindow, {
-      type: 'info', title: '更新就绪', message: '新版本已下载完成，重启后生效。',
-      buttons: ['立即重启', '稍后'],
+      type: 'info',
+      title: '更新就绪',
+      message: '新版本已下载完成。点击「立即安装」后，将弹出安装向导，请按提示逐步点击「下一步」完成安装（不会自动静默安装）。',
+      buttons: ['立即安装', '稍后'],
     }).then(({ response }) => {
-      if (response === 0) autoUpdater.quitAndInstall();
+      if (response === 0) {
+        const file = downloadedFile;
+        isQuitting = true;
+        // 先关闭主程序释放文件锁，再由系统打开安装向导（不带 --updated，确保显示完整向导页）
+        setTimeout(() => {
+          shell.openPath(file);
+          app.quit();
+        }, 400);
+      }
     });
   });
   autoUpdater.on('error', (e) => console.warn('[updater]', e));

@@ -4,7 +4,7 @@ copyright: Copyright © 2026 曦微
 artifactName: yingfubao-setup-${version}.${ext}
 
 directories:
-  output: release
+  output: release-v1310
   buildResources: build
 
 # 无原生模块（本地离线 OCR 引擎已移除），保持 npmRebuild 关闭以加速打包
@@ -33,6 +33,8 @@ nsis:
   oneClick: false
   perMachine: true
   allowToChangeInstallationDirectory: false
+  # 许可协议页：让安装向导明确多步（欢迎 → 许可协议 → 安装 → 完成），用户手动点“下一步”
+  license: build/license.txt
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: 应付宝
