@@ -32,7 +32,7 @@ win:
 nsis:
   oneClick: false
   perMachine: true
-  allowToChangeInstallationDirectory: true
+  allowToChangeInstallationDirectory: false
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: 应付宝
