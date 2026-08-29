@@ -1,7 +1,7 @@
 {
   "name": "yingfubao",
   "private": true,
-  "version": "1.3.11",
+  "version": "1.3.12",
   "description": "应付宝 - 应付账款管理（桌面端）",
   "author": "曦微",
   "type": "module",
