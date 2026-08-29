@@ -32,8 +32,9 @@ win:
 nsis:
   oneClick: false
   perMachine: true
-  allowToChangeInstallationDirectory: false
-  # 许可协议页：让安装向导明确多步（欢迎 → 许可协议 → 安装 → 完成），用户手动点“下一步”
+  allowToChangeInstallationDirectory: true
+  # 允许显示目录选择页（让用户能看到“安装路径”并点下一步），
+  # 实际路径仍由 installer.nsh 锁死在 D:\Program Files\yingfubao
   license: build/license.txt
   createDesktopShortcut: true
   createStartMenuShortcut: true

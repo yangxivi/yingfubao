@@ -243,11 +243,12 @@ export default function SupplierListPage() {
         <div style={{
           background: selectedRowKeys.length > 0 ? '#e6f7ff' : '#fafafa',
           borderBottom: selectedRowKeys.length > 0 ? '1px solid #91d5ff' : '1px solid #f0f0f0',
-          padding: '0 20px',
+          padding: '0 16px',
           display: 'flex',
           alignItems: 'center',
           gap: 32,
           height: 44,
+          whiteSpace: 'nowrap',
         }}>
           <Checkbox
             checked={selectedRowKeys.length === suppliers.length && suppliers.length > 0}

@@ -450,81 +450,66 @@ export default function InvoiceListPage() {
           key="1"
         >
           <div className="yb-filter-panel">
-            <Row gutter={[16, 12]}>
-              <Col xs={24} sm={8}>
-                <div className="yb-filter-group">
-                  <label>📦 供应商</label>
-                  <Select
-                    placeholder="全部供应商"
-                    allowClear showSearch optionFilterProp="children"
-                    style={{ width: '100%' }}
-                    value={supplierFilter || undefined}
-                    onChange={(v) => { setSupplierFilter(v || 0); setPagination((p) => ({ ...p, current: 1 })); }}
-                  >
-                    {suppliers.map((s: any) => (
-                      <Select.Option key={s.id} value={s.id}>{s.name}</Select.Option>
-                    ))}
-                  </Select>
-                </div>
-              </Col>
-              <Col xs={12} sm={8}>
-                <div className="yb-filter-group">
-                  <label>📅 开票日期（起）</label>
-                  <DatePicker style={{ width: '100%' }} value={dateFrom} onChange={(d) => { setDateFrom(d); setPagination((p) => ({ ...p, current: 1 })); }} format="YYYY-MM-DD" placeholder="年-月-日" />
-                </div>
-              </Col>
-              <Col xs={12} sm={8}>
-                <div className="yb-filter-group">
-                  <label>📅 开票日期（止）</label>
-                  <DatePicker style={{ width: '100%' }} value={dateTo} onChange={(d) => { setDateTo(d); setPagination((p) => ({ ...p, current: 1 })); }} format="YYYY-MM-DD" placeholder="年-月-日" />
-                </div>
-              </Col>
-              <Col xs={12} sm={8}>
-                <div className="yb-filter-group">
-                  <label>💰 付款日期（起）</label>
-                  <DatePicker style={{ width: '100%' }} value={payDateFrom} onChange={(d) => { setPayDateFrom(d); setPagination((p) => ({ ...p, current: 1 })); }} format="YYYY-MM-DD" placeholder="年-月-日" />
-                </div>
-              </Col>
-              <Col xs={12} sm={8}>
-                <div className="yb-filter-group">
-                  <label>💰 付款日期（止）</label>
-                  <DatePicker style={{ width: '100%' }} value={payDateTo} onChange={(d) => { setPayDateTo(d); setPagination((p) => ({ ...p, current: 1 })); }} format="YYYY-MM-DD" placeholder="年-月-日" />
-                </div>
-              </Col>
-              <Col xs={12} sm={8}>
-                <div className="yb-filter-group">
-                  <label>💵 最小金额（元）</label>
-                  <Input type="number" placeholder="0.00" value={amountMin} onChange={(e) => { setAmountMin(e.target.value ? Number(e.target.value) : undefined); setPagination((p) => ({ ...p, current: 1 })); }} prefix="¥" allowClear />
-                </div>
-              </Col>
-              <Col xs={24} sm={8}>
-                <div className="yb-filter-group">
-                  <label>💵 最大金额（元）</label>
-                  <Input type="number" placeholder="0.00" value={amountMax} onChange={(e) => { setAmountMax(e.target.value ? Number(e.target.value) : undefined); setPagination((p) => ({ ...p, current: 1 })); }} prefix="¥" allowClear />
-                </div>
-              </Col>
-            </Row>
-            <div style={{ textAlign: 'right', marginTop: 12 }}>
-              <Space>
-                <Button
-                  icon={<CloseCircleOutlined />}
-                  onClick={() => {
-                    setSearch('');
-                    setStatusFilter('');
-                    setSupplierFilter(0);
-                    setDateFrom(null);
-                    setDateTo(null);
-                    setPayDateFrom(null);
-                    setPayDateTo(null);
-                    setAmountMin(undefined);
-                    setAmountMax(undefined);
-                    setPagination((p) => ({ ...p, current: 1 }));
-                  }}
+            <div className="yb-filter-row yb-filter-row--single">
+              <div className="yb-filter-group">
+                <label>📦 供应商</label>
+                <Select
+                  placeholder="全部供应商"
+                  allowClear showSearch optionFilterProp="children"
+                  value={supplierFilter || undefined}
+                  onChange={(v) => { setSupplierFilter(v || 0); setPagination((p) => ({ ...p, current: 1 })); }}
                 >
-                  清除筛选
-                </Button>
-                <Button type="primary" icon={<SearchOutlined />} onClick={fetchInvoices}>查询</Button>
-              </Space>
+                  {suppliers.map((s: any) => (
+                    <Select.Option key={s.id} value={s.id}>{s.name}</Select.Option>
+                  ))}
+                </Select>
+              </div>
+              <div className="yb-filter-group">
+                <label>📅 开票日期（起）</label>
+                <DatePicker value={dateFrom} onChange={(d) => { setDateFrom(d); setPagination((p) => ({ ...p, current: 1 })); }} format="YYYY-MM-DD" placeholder="年-月-日" />
+              </div>
+              <div className="yb-filter-group">
+                <label>📅 开票日期（止）</label>
+                <DatePicker value={dateTo} onChange={(d) => { setDateTo(d); setPagination((p) => ({ ...p, current: 1 })); }} format="YYYY-MM-DD" placeholder="年-月-日" />
+              </div>
+              <div className="yb-filter-group">
+                <label>💰 付款日期（起）</label>
+                <DatePicker value={payDateFrom} onChange={(d) => { setPayDateFrom(d); setPagination((p) => ({ ...p, current: 1 })); }} format="YYYY-MM-DD" placeholder="年-月-日" />
+              </div>
+              <div className="yb-filter-group">
+                <label>💰 付款日期（止）</label>
+                <DatePicker value={payDateTo} onChange={(d) => { setPayDateTo(d); setPagination((p) => ({ ...p, current: 1 })); }} format="YYYY-MM-DD" placeholder="年-月-日" />
+              </div>
+              <div className="yb-filter-group">
+                <label>💵 最小金额（元）</label>
+                <Input type="number" placeholder="0.00" value={amountMin} onChange={(e) => { setAmountMin(e.target.value ? Number(e.target.value) : undefined); setPagination((p) => ({ ...p, current: 1 })); }} prefix="¥" allowClear />
+              </div>
+              <div className="yb-filter-group">
+                <label>💵 最大金额（元）</label>
+                <Input type="number" placeholder="0.00" value={amountMax} onChange={(e) => { setAmountMax(e.target.value ? Number(e.target.value) : undefined); setPagination((p) => ({ ...p, current: 1 })); }} prefix="¥" allowClear />
+              </div>
+              <div className="yb-filter-actions" style={{ display: 'flex', alignItems: 'flex-end', flexShrink: 0, paddingBottom: 0 }}>
+                <Space>
+                  <Button
+                    icon={<CloseCircleOutlined />}
+                    onClick={() => {
+                      setSearch('');
+                      setStatusFilter('');
+                      setSupplierFilter(0);
+                      setDateFrom(null);
+                      setDateTo(null);
+                      setPayDateFrom(null);
+                      setPayDateTo(null);
+                      setAmountMin(undefined);
+                      setAmountMax(undefined);
+                      setPagination((p) => ({ ...p, current: 1 }));
+                    }}
+                  >
+                    清除筛选
+                  </Button>
+                  <Button type="primary" icon={<SearchOutlined />} onClick={fetchInvoices}>查询</Button>
+                </Space>
+              </div>
             </div>
           </div>
         </Collapse.Panel>
@@ -536,11 +521,12 @@ export default function InvoiceListPage() {
         <div style={{
           background: selectedRowKeys.length > 0 ? '#e6f7ff' : '#fafafa',
           borderBottom: selectedRowKeys.length > 0 ? '1px solid #91d5ff' : '1px solid #f0f0f0',
-          padding: '0 20px',
+          padding: '0 16px',
           display: 'flex',
           alignItems: 'center',
           gap: 32,
           height: 44,
+          whiteSpace: 'nowrap',
         }}>
           <Checkbox
             checked={selectedRowKeys.length === invoices.length && invoices.length > 0}
