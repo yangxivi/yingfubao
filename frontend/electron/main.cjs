@@ -139,7 +139,7 @@ function setupAutoUpdater() {
       type: 'info', title: '发现新版本', message: '应付宝桌面端有新版本，正在后台下载…',
     });
   });
-  autoUpdater.on('update-downloaded', (event, releaseNotes, releaseName, releaseDate, updateURL, downloadedFile) => {
+  autoUpdater.on('update-downloaded', () => {
     dialog.showMessageBox(mainWindow, {
       type: 'info',
       title: '更新就绪',
@@ -147,7 +147,10 @@ function setupAutoUpdater() {
       buttons: ['立即安装', '稍后'],
     }).then(({ response }) => {
       if (response === 0) {
-        const file = downloadedFile;
+        // electron-updater 的 update-downloaded 事件不回传安装包路径，
+        // 正确方式是用 installerPath 取值（即已下载的 setup.exe）。
+        const file = autoUpdater.installerPath;
+        if (!file) return;
         isQuitting = true;
         // 先关闭主程序释放文件锁，再由系统打开安装向导（不带 --updated，确保显示完整向导页）
         setTimeout(() => {
