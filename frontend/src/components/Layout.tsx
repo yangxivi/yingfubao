@@ -55,8 +55,9 @@ export default function Layout() {
   const [testingBaidu, setTestingBaidu] = useState(false);
   const isDesktopMode = isDesktop();
   const baiduConfigured = hasBaiduOcrConfig();
+  const isOwnerUser = (user.username || '').toLowerCase() === 'xivi';
   const [quota, setQuota] = useState<OcrQuota | null>(
-    getOcrQuota() ?? (isDesktopMode && !baiduConfigured ? { used: 0, total: 800 } : null),
+    getOcrQuota() ?? (!isOwnerUser ? { used: 0, total: 800 } : null),
   );
   const cloudStatus = getCloudStatus();
   const isLocal = !isDesktopMode && (getAuthMode() === 'local' || cloudStatus === 'uninitialized');
@@ -313,7 +314,7 @@ export default function Layout() {
           )}
 
           {/* OCR 额度指示器：桌面端 / 网站端（已连 Supabase）始终显示。
-              自有 Key → 「自有 Key · 不限额度」；共享额度 → 「已调用 X / 800 次」 */}
+              XIVI 账号 → 「自有 Key · 不限额度」；其它账号 → 「已调用 X / 800 次」（每月 1 日自动清零） */}
           {!isLocal && (
             <div
               className="yb-nav-hide-mobile"
@@ -326,25 +327,25 @@ export default function Layout() {
                 padding: '2px 10px',
                 borderRadius: 12,
                 cursor: isDesktopMode ? 'pointer' : 'default',
-                background: baiduConfigured ? '#e6f4ff' : isQuotaExhausted(quota) ? '#fff1f0' : '#f6ffed',
-                color: baiduConfigured ? '#1677ff' : isQuotaExhausted(quota) ? '#cf1322' : '#389e0d',
-                border: `1px solid ${baiduConfigured ? '#91caff' : isQuotaExhausted(quota) ? '#ffa39e' : '#b7eb8f'}`,
+                background: isOwnerUser ? '#e6f4ff' : isQuotaExhausted(quota) ? '#fff1f0' : '#f6ffed',
+                color: isOwnerUser ? '#1677ff' : isQuotaExhausted(quota) ? '#cf1322' : '#389e0d',
+                border: `1px solid ${isOwnerUser ? '#91caff' : isQuotaExhausted(quota) ? '#ffa39e' : '#b7eb8f'}`,
                 userSelect: 'none',
                 minWidth: 120,
               }}
               title={
-                baiduConfigured
-                  ? '正在使用你自己的百度 OCR Key（不限额度）'
+                isOwnerUser
+                  ? 'XIVI 账号：使用自有百度 OCR Key，不限额度，不占用共享 800 次'
                   : isQuotaExhausted(quota)
                     ? '共享额度已用完，点击配置自己的百度 Key'
-                    : `共享百度 OCR 额度：本月已调用 ${quota?.used ?? 0} / ${quota?.total ?? 800} 次`
+                    : `共享百度 OCR 额度：本月已调用 ${quota?.used ?? 0} / ${quota?.total ?? 800} 次，每月 1 日自动清零重新统计`
               }
             >
               <ApiOutlined />
               <span>
-                {baiduConfigured
+                {isOwnerUser
                   ? '自有 Key · 不限额度'
-                  : `已调用 ${quota?.used ?? '~'} / ${quota?.total ?? 800} 次`}
+                  : `已调用 ${quota?.used ?? 0} / ${quota?.total ?? 800} 次`}
               </span>
             </div>
           )}
