@@ -19,6 +19,9 @@ import {
 } from '@ant-design/icons';
 import { invoiceApi, dashboardApi } from '../api/client';
 import { fetchSharedOcrQuota } from '../lib/ocr';
+import { isOwnerUser } from '../lib/auth';
+import { hasBaiduOcrConfig } from '../lib/desktop-env';
+import { getOcrQuota, isQuotaExhausted } from '../lib/ocr-quota';
 
 const { Dragger } = Upload;
 
@@ -43,6 +46,14 @@ export default function UploadPage() {
 
   // 抓取整批文件总数（multiple 时 beforeUpload 最后一次 fileList 为全部文件）
   const beforeUpload: UploadProps['beforeUpload'] = (file, fileList) => {
+    // 非所有者且未配置自有 Key 时，共享额度耗尽则阻止上传
+    if (!isOwnerUser() && !hasBaiduOcrConfig()) {
+      const q = getOcrQuota();
+      if (isQuotaExhausted(q)) {
+        message.error('共享 OCR 额度已用完（800/800）。请到右上角「设置」中配置自己的百度 OCR Key 继续使用。');
+        return false;
+      }
+    }
     if (fileList && fileList.length > 0) {
       if (!uploading) {
         batchRef.current = { total: fileList.length, done: 0 };
