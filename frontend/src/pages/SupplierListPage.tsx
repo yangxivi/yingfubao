@@ -239,43 +239,48 @@ export default function SupplierListPage() {
 
       {/* 表格 + 底部汇总 */}
       <Card bodyStyle={{ padding: 0 }}>
-        {/* 多选汇总栏 */}
-        {selectedRowKeys.length > 0 && (
-          <div style={{
-            background: '#e6f7ff',
-            borderBottom: '1px solid #91d5ff',
-            padding: '10px 20px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 32,
-          }}>
-            <Checkbox
-              checked={selectedRowKeys.length === suppliers.length && suppliers.length > 0}
-              indeterminate={selectedRowKeys.length > 0 && selectedRowKeys.length < suppliers.length}
-              onChange={(e) => {
-                if (e.target.checked) setSelectedRowKeys(suppliers.map((s) => s.id));
-                else setSelectedRowKeys([]);
-              }}
-            >
-              全选（{selectedRowKeys.length}/{suppliers.length}）
-            </Checkbox>
-            <Statistic title="选中数量" value={selectedSummary.count} suffix="家" style={{ fontSize: 14 }} valueStyle={{ fontSize: 16, fontWeight: 600 }} />
-            <div style={{ marginLeft: 'auto' }}>
-              <Popconfirm
-                title={`确认删除选中的 ${selectedRowKeys.length} 家供应商？`}
-                description="删除后不可恢复"
-                onConfirm={handleBatchDelete}
-                okText="确认删除"
-                cancelText="取消"
-                okButtonProps={{ danger: true }}
-              >
-                <Button danger icon={<DeleteOutlined />} loading={batchDeleting}>
-                  批量删除（{selectedRowKeys.length}）
-                </Button>
-              </Popconfirm>
-            </div>
-          </div>
-        )}
+        {/* 多选汇总栏（始终渲染，固定高度，避免点「全选」时布局跳动） */}
+        <div style={{
+          background: selectedRowKeys.length > 0 ? '#e6f7ff' : '#fafafa',
+          borderBottom: selectedRowKeys.length > 0 ? '1px solid #91d5ff' : '1px solid #f0f0f0',
+          padding: '10px 20px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 32,
+          minHeight: 44,
+        }}>
+          <Checkbox
+            checked={selectedRowKeys.length === suppliers.length && suppliers.length > 0}
+            indeterminate={selectedRowKeys.length > 0 && selectedRowKeys.length < suppliers.length}
+            onChange={(e) => {
+              if (e.target.checked) setSelectedRowKeys(suppliers.map((s) => s.id));
+              else setSelectedRowKeys([]);
+            }}
+          >
+            全选（{selectedRowKeys.length}/{suppliers.length}）
+          </Checkbox>
+          {selectedRowKeys.length > 0 ? (
+            <>
+              <Statistic title="选中数量" value={selectedSummary.count} suffix="家" style={{ fontSize: 14 }} valueStyle={{ fontSize: 16, fontWeight: 600 }} />
+              <div style={{ marginLeft: 'auto' }}>
+                <Popconfirm
+                  title={`确认删除选中的 ${selectedRowKeys.length} 家供应商？`}
+                  description="删除后不可恢复"
+                  onConfirm={handleBatchDelete}
+                  okText="确认删除"
+                  cancelText="取消"
+                  okButtonProps={{ danger: true }}
+                >
+                  <Button danger icon={<DeleteOutlined />} loading={batchDeleting}>
+                    批量删除（{selectedRowKeys.length}）
+                  </Button>
+                </Popconfirm>
+              </div>
+            </>
+          ) : (
+            <span style={{ color: '#bbb', fontSize: 13 }}>勾选供应商后可批量删除</span>
+          )}
+        </div>
 
         <Table
           dataSource={suppliers}

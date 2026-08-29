@@ -532,62 +532,67 @@ export default function InvoiceListPage() {
 
       {/* 表格区域 */}
       <Card bodyStyle={{ padding: 0 }}>
-        {/* 多选汇总栏 */}
-        {selectedRowKeys.length > 0 && (
-          <div style={{
-            background: '#e6f7ff',
-            borderBottom: '1px solid #91d5ff',
-            padding: '10px 20px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 32,
-          }}>
-            <Checkbox
-              checked={selectedRowKeys.length === invoices.length && invoices.length > 0}
-              indeterminate={selectedRowKeys.length > 0 && selectedRowKeys.length < invoices.length}
-              onChange={(e) => {
-                if (e.target.checked) setSelectedRowKeys(invoices.map((i) => i.id));
-                else setSelectedRowKeys([]);
-              }}
-            >
-              全选（{selectedRowKeys.length}/{invoices.length}）
-            </Checkbox>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-              <span style={{ color: '#666', fontSize: 14 }}>选中数量</span>
-              <span style={{ fontSize: 16, fontWeight: 600 }}>{selectedSummary.count} 条</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-              <span style={{ color: '#666', fontSize: 14 }}>合计金额</span>
-              <span style={{ color: '#cf1322', fontSize: 16, fontWeight: 600 }}>¥{selectedSummary.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-            </div>
-            <div style={{ marginLeft: 'auto' }}>
-              <Space>
-                <Popconfirm
-                  title={`确认将选中的 ${selectedRowKeys.length} 条发票标记为已付款？`}
-                  onConfirm={handleBatchMarkPaid}
-                  okText="确认标记"
-                  cancelText="取消"
-                >
-                  <Button type="primary" icon={<CheckCircleOutlined />} loading={batchMarkingPaid}>
-                    批量标记已付款（{selectedRowKeys.length}）
-                  </Button>
-                </Popconfirm>
-                <Popconfirm
-                  title={`确认删除选中的 ${selectedRowKeys.length} 条发票？`}
-                  description="删除后不可恢复"
-                  onConfirm={handleBatchDelete}
-                  okText="确认删除"
-                  cancelText="取消"
-                  okButtonProps={{ danger: true }}
-                >
-                  <Button danger icon={<DeleteOutlined />} loading={batchDeleting}>
-                    批量删除（{selectedRowKeys.length}）
-                  </Button>
-                </Popconfirm>
-              </Space>
-            </div>
-          </div>
-        )}
+        {/* 多选汇总栏（始终渲染，固定高度，避免点「全选」时布局跳动） */}
+        <div style={{
+          background: selectedRowKeys.length > 0 ? '#e6f7ff' : '#fafafa',
+          borderBottom: selectedRowKeys.length > 0 ? '1px solid #91d5ff' : '1px solid #f0f0f0',
+          padding: '10px 20px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 32,
+          minHeight: 44,
+        }}>
+          <Checkbox
+            checked={selectedRowKeys.length === invoices.length && invoices.length > 0}
+            indeterminate={selectedRowKeys.length > 0 && selectedRowKeys.length < invoices.length}
+            onChange={(e) => {
+              if (e.target.checked) setSelectedRowKeys(invoices.map((i) => i.id));
+              else setSelectedRowKeys([]);
+            }}
+          >
+            全选（{selectedRowKeys.length}/{invoices.length}）
+          </Checkbox>
+          {selectedRowKeys.length > 0 ? (
+            <>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                <span style={{ color: '#666', fontSize: 14 }}>选中数量</span>
+                <span style={{ fontSize: 16, fontWeight: 600 }}>{selectedSummary.count} 条</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                <span style={{ color: '#666', fontSize: 14 }}>合计金额</span>
+                <span style={{ color: '#cf1322', fontSize: 16, fontWeight: 600 }}>¥{selectedSummary.totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+              <div style={{ marginLeft: 'auto' }}>
+                <Space>
+                  <Popconfirm
+                    title={`确认将选中的 ${selectedRowKeys.length} 条发票标记为已付款？`}
+                    onConfirm={handleBatchMarkPaid}
+                    okText="确认标记"
+                    cancelText="取消"
+                  >
+                    <Button type="primary" icon={<CheckCircleOutlined />} loading={batchMarkingPaid}>
+                      批量标记已付款（{selectedRowKeys.length}）
+                    </Button>
+                  </Popconfirm>
+                  <Popconfirm
+                    title={`确认删除选中的 ${selectedRowKeys.length} 条发票？`}
+                    description="删除后不可恢复"
+                    onConfirm={handleBatchDelete}
+                    okText="确认删除"
+                    cancelText="取消"
+                    okButtonProps={{ danger: true }}
+                  >
+                    <Button danger icon={<DeleteOutlined />} loading={batchDeleting}>
+                      批量删除（{selectedRowKeys.length}）
+                    </Button>
+                  </Popconfirm>
+                </Space>
+              </div>
+            </>
+          ) : (
+            <span style={{ color: '#bbb', fontSize: 13 }}>勾选发票后可批量标记已付款 / 删除</span>
+          )}
+        </div>
 
         <Table
           dataSource={invoices}
