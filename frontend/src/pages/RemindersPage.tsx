@@ -38,13 +38,31 @@ export default function RemindersPage() {
     return <Tag>{days} 天后到期</Tag>;
   };
 
+  // 按与下方列表完全相同的分桶逻辑实时计数，保证 badge 数字与展示行数一致
+  const countForTab = (key: TabKey): number => {
+    if (!data?.invoices) return 0;
+    const today = dayjs();
+    return data.invoices.filter((inv: any) => {
+      if (!inv.payment_date) return false;
+      const d = dayjs(inv.payment_date).diff(today, 'day');
+      switch (key) {
+        case 'overdue': return d < 0;
+        case '15': return d >= 0 && d <= 15;
+        case '30': return d > 15 && d <= 30;
+        case '60': return d > 30 && d <= 60;
+        case '90': return d > 60 && d <= 90;
+        default: return false;
+      }
+    }).length;
+  };
+
   // Tab 筛选
   const tabs: { key: TabKey; label: string; count: number; danger?: boolean }[] = [
-    { key: 'overdue', label: '已逾期', count: data?.overdue || 0, danger: true },
-    { key: '15', label: '15天内', count: data?.due_within_15 || 0 },
-    { key: '30', label: '30天内', count: data?.due_within_30 || 0 },
-    { key: '60', label: '60天内', count: data?.due_within_60 || 0 },
-    { key: '90', label: '90天内', count: data?.due_within_90 || 0 },
+    { key: 'overdue', label: '已逾期', count: countForTab('overdue'), danger: true },
+    { key: '15', label: '15天内', count: countForTab('15') },
+    { key: '30', label: '30天内', count: countForTab('30') },
+    { key: '60', label: '60天内', count: countForTab('60') },
+    { key: '90', label: '90天内', count: countForTab('90') },
   ];
 
   const getFilteredInvoices = () => {

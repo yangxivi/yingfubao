@@ -92,6 +92,41 @@ export default function InvoiceListPage() {
     } catch (err) { /* handled */ }
   };
 
+  // 导出当前列表为 CSV（带 BOM 保证 Excel 中文不乱码）
+  const handleExport = () => {
+    if (!invoices.length) {
+      message.warning('当前没有可导出的发票');
+      return;
+    }
+    const statusMap: any = { pending: '待付款', paid: '已付款', overdue: '已逾期' };
+    const header = ['发票号码', '供应商', '开票日期', '付款日期', '剩余天数', '金额', '状态'];
+    const rows = invoices.map((i: any) => [
+      i.invoice_no || '',
+      (i.supplier_name || '').replace(/^(名称[：:\s]*)/, ''),
+      i.invoice_date || '',
+      i.payment_date || '',
+      (() => {
+        const dl = daysLeft(i.payment_date);
+        return dl === null ? '' : String(dl);
+      })(),
+      (Number(i.total_amount) || 0).toFixed(2),
+      statusMap[i.status] || i.status || '',
+    ]);
+    const csv = [header, ...rows]
+      .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','))
+      .join('\r\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `应付宝发票_${dayjs().format('YYYYMMDD_HHmmss')}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    message.success(`已导出 ${invoices.length} 条发票`);
+  };
+
   useEffect(() => { fetchInvoices(); }, [
     pagination.current,
     pagination.pageSize,
@@ -425,7 +460,7 @@ export default function InvoiceListPage() {
           </Select>
         </div>
         <div className="yb-toolbar-right">
-          <Button icon={<ExportOutlined />}>导出 Excel</Button>
+          <Button icon={<ExportOutlined />} onClick={handleExport}>导出 Excel</Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
             添加发票
           </Button>
