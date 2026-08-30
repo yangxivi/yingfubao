@@ -355,6 +355,16 @@ function parseStructured(full: string, lines: string[]): OcrResult {
     if (allAmounts.length > 0) total_amount = allAmounts[0];
   }
 
+  // ---- 4. 税率（提前解析，供金额拆分使用；优先匹配“税率”锚点，避免误取折扣率等其他百分比）----
+  let tax_rate = '';
+  let rateNum = 0;
+  const rm = full.match(/税率[^%％\d]{0,6}(\d{1,2}(?:\.\d+)?)\s*[%％]/)
+          || full.match(/(\d{1,2}(?:\.\d+)?)\s*[%％]/);
+  if (rm) {
+    tax_rate = `${rm[1]}%`;
+    rateNum = parseFloat(rm[1]) || 0;
+  }
+
   // ---- 不含税金额与税额 ----
   let amount_excluding_tax = 0;
   let tax_amount = 0;
@@ -371,14 +381,11 @@ function parseStructured(full: string, lines: string[]): OcrResult {
     amount_excluding_tax = uniqTable[0];
     tax_amount = Math.round((total_amount - amount_excluding_tax) * 100) / 100;
   } else if (total_amount > 0) {
-    amount_excluding_tax = Math.round(total_amount / 1.13 * 100) / 100;
-    tax_amount = Math.round(total_amount - amount_excluding_tax);
+    // 用发票实际税率拆分，避免写死 13% 导致 3%/1%/5% 等低税率发票金额失真
+    const divisor = rateNum > 0 ? (1 + rateNum / 100) : 1.13;
+    amount_excluding_tax = Math.round((total_amount / divisor) * 100) / 100;
+    tax_amount = Math.round((total_amount - amount_excluding_tax) * 100) / 100;
   }
-
-  // ---- 4. 税率 ----
-  let tax_rate = '';
-  const rm = full.match(/(\d{1,2}(?:\.\d+)?)\s*[%％]/);
-  if (rm) tax_rate = `${rm[1]}%`;
 
   // ---- 5. 销售方名称 ----
   let seller_name = '';
