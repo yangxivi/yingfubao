@@ -35,8 +35,8 @@ frontend/release-v1311/
 frontend/release-v1312/
 frontend/release-v1313/
 frontend/release-v1314/
-# 临时构建输出（本次用 fresh dir 规避 win-unpacked 锁）
-frontend/release_build/
+# 临时构建输出（用 fresh dir 规避 win-unpacked 锁；构建后仅用于发布，不应入库）
+frontend/release_build*/
 
 # ----- OS -----
 .DS_Store
