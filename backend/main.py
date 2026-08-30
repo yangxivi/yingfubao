@@ -447,6 +447,12 @@ def list_invoices(
     status: str = "",
     supplier_id: int = 0,
     search: str = "",
+    date_from: str = "",
+    date_to: str = "",
+    pay_date_from: str = "",
+    pay_date_to: str = "",
+    amount_min: Optional[float] = None,
+    amount_max: Optional[float] = None,
     sort_by: str = "created_at",
     sort_dir: str = "desc",
     page: int = 1,
@@ -465,6 +471,24 @@ def list_invoices(
             Invoice.invoice_no.contains(search)
             | Invoice.remark.contains(search)
         )
+
+    # 开票日期范围
+    if date_from:
+        q = q.filter(Invoice.invoice_date >= datetime.strptime(date_from, "%Y-%m-%d").date())
+    if date_to:
+        q = q.filter(Invoice.invoice_date <= datetime.strptime(date_to, "%Y-%m-%d").date())
+
+    # 付款日期范围
+    if pay_date_from:
+        q = q.filter(Invoice.payment_date >= datetime.strptime(pay_date_from, "%Y-%m-%d").date())
+    if pay_date_to:
+        q = q.filter(Invoice.payment_date <= datetime.strptime(pay_date_to, "%Y-%m-%d").date())
+
+    # 金额范围
+    if amount_min is not None:
+        q = q.filter(Invoice.total_amount >= amount_min)
+    if amount_max is not None:
+        q = q.filter(Invoice.total_amount <= amount_max)
 
     # Sort
     sort_col = getattr(Invoice, sort_by, Invoice.created_at)

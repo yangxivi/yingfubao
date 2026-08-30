@@ -165,12 +165,21 @@ export const invoiceApi = {
 
       if (params?.search) {
         const q = String(params.search).toLowerCase();
-        list = list.filter((i) => (i.invoice_no || '').toLowerCase().includes(q));
+        list = list.filter(
+          (i) =>
+            (i.invoice_no || '').toLowerCase().includes(q) ||
+            (i.supplier_name || '').toLowerCase().includes(q),
+        );
       }
       if (params?.status) list = list.filter((i) => i.status === params.status);
-      if (params?.supplier_id) list = list.filter((i) => i.supplier_id === params.supplier_id);
+      if (params?.supplier_id) {
+        const sid = String(params.supplier_id);
+        list = list.filter((i) => String(i.supplier_id) === sid);
+      }
       if (params?.date_from) list = list.filter((i) => i.invoice_date >= params.date_from!);
       if (params?.date_to) list = list.filter((i) => i.invoice_date <= params.date_to!);
+      if (params?.pay_date_from) list = list.filter((i) => i.payment_date >= params.pay_date_from!);
+      if (params?.pay_date_to) list = list.filter((i) => i.payment_date <= params.pay_date_to!);
       if (params?.amount_min !== undefined) list = list.filter((i) => (i.total_amount || 0) >= params.amount_min!);
       if (params?.amount_max !== undefined) list = list.filter((i) => (i.total_amount || 0) <= params.amount_max!);
 
