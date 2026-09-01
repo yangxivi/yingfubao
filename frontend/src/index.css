@@ -430,7 +430,7 @@ body {
   background: var(--yb-card-bg);
   border-bottom: 1px solid var(--yb-border);
   padding: 0 24px;
-  height: 60px;
+  height: 68px;
   display: flex;
   align-items: center;
   justify-content: space-between;
