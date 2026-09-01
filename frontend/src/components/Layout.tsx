@@ -140,11 +140,15 @@ export default function Layout() {
           content: `将用备份数据替换当前账号的 ${supCount} 条供应商、${invCount} 条发票记录。继续吗？`,
           okText: '导入并替换',
           cancelText: '取消',
-          onOk: () => {
+          onOk: async () => {
             const userId = getCurrentUserId();
             if (!userId) return;
-            importUserBackup(userId, parsed);
+            await importUserBackup(userId, parsed);
             messageApi.success('导入成功，正在刷新…');
+            // 桌面端 reload 会清 token 强制登录；保留本次会话避免再登一次
+            if (isDesktopMode) {
+              try { sessionStorage.setItem('yingfubao_keep_session_after_import', '1'); } catch {}
+            }
             setTimeout(() => window.location.reload(), 600);
           },
         });

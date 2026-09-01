@@ -489,9 +489,23 @@ export async function importUserBackup(userId: string, backup: BackupFile): Prom
   if (isDesktop()) {
     const api = electronAPI();
     if (api) {
+      // 网页端（云端账号）导出的备份 userId 与桌面端本地账号不同，
+      // 必须重写为当前登录的桌面用户，否则重登后数据挂在另一个用户下。
+      const supMap = new Map<string, string>();
+      const newSup = backup.data.suppliers.map((s) => {
+        const nid = crypto.randomUUID();
+        supMap.set(s.id, nid);
+        return { ...s, id: nid, userId };
+      });
+      const newInv = backup.data.invoices.map((i) => ({
+        ...i,
+        id: crypto.randomUUID(),
+        userId,
+        supplier_id: i.supplier_id != null ? supMap.get(i.supplier_id) || null : null,
+      }));
       await api.dbReplace({
-        suppliers: backup.data.suppliers.map(supplierToRow),
-        invoices: backup.data.invoices.map(invoiceToRow),
+        suppliers: newSup.map(supplierToRow),
+        invoices: newInv.map(invoiceToRow),
       });
       cache = await loadDesktop(userId);
     }

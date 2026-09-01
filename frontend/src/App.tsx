@@ -59,9 +59,15 @@ export default function App() {
       // 2. 恢复账期设置
       initAccountPeriodFromSession();
 
-      // 3. 桌面端每次启动都强制重新登录（不保留 token），保留 user 用于登录页显示
+      // 3. 桌面端每次启动都强制重新登录（不保留 token），保留 user 用于登录页显示。
+      //    例外：从「导入备份」触发的 reload 需要保留会话，避免用户再登录一次。
       if (isDesktop()) {
-        localStorage.removeItem('token');
+        const keepSession = sessionStorage.getItem('yingfubao_keep_session_after_import');
+        if (keepSession) {
+          sessionStorage.removeItem('yingfubao_keep_session_after_import');
+        } else {
+          localStorage.removeItem('token');
+        }
       }
 
       // 4. 已登录则预热数据缓存（必须在渲染页面前完成，否则仪表盘首次全 0）
