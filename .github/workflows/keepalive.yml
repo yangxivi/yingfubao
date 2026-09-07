@@ -1,30 +1,26 @@
 name: Supabase Keep-Alive
 
-# 应付宝（yingfubao）后端用 Supabase 免费层。
-# 免费项目在「连续 7 天无 API/数据库连接」后会被 Supabase 自动暂停（Pause），
-# 暂停期间网站仪表盘会全部显示 0（数据其实没丢，恢复即回）。
-# 本工作流每 5 天定时 ping 一次 Supabase REST，制造活跃连接，避免被暂停。
+# 防止 Supabase 免费层项目因不活跃被自动暂停（2026-09 曾因间隔过长被暂停过一次）。
+# 每天定时 ping 一次 Supabase REST 制造活跃连接（每次约 20s，月耗 Actions 额度 ~10 分钟）。
+# 失败仅告警不阻塞——项目若已被暂停，需要到 Supabase Dashboard 手动 Resume。
 on:
   schedule:
-    - cron: '17 3 */5 * *'   # 每 5 天 UTC 03:17 触发（远小于 7 天阈值）
-  workflow_dispatch:          # 也可在 Actions 页面手动点「Run workflow」立即验证
+    - cron: '23 4 * * *'        # 每天 UTC 04:23（北京 12:23）
+  workflow_dispatch:             # 可在 Actions 页面手动触发
 
 jobs:
-  keepalive:
+  ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Supabase REST to keep project active
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      - name: Ping Supabase to stay active
         run: |
-          CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-            "$SUPABASE_URL/rest/v1/invoices?select=id&limit=1" \
-            -H "apikey: $SUPABASE_ANON_KEY" \
-            -H "Authorization: Bearer $SUPABASE_ANON_KEY")
-          echo "Supabase ping HTTP status: $CODE"
-          if [ "$CODE" = "200" ]; then
-            echo "✅ keep-alive OK，项目保持活跃"
+          URL="${{ secrets.SUPABASE_URL }}/rest/v1/invoices?select=id&limit=1"
+          HTTP=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$URL" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}")
+          echo "Supabase ping HTTP status: $HTTP"
+          if [ "$HTTP" = "200" ]; then
+            echo "keep-alive OK, project stays active"
           else
-            echo "::warning::keep-alive ping 返回 $CODE（期望 200），请检查 Secrets 或项目状态"
+            echo "::warning::keep-alive HTTP=$HTTP - 项目可能已暂停，请到 Supabase Dashboard 手动 Resume"
           fi
