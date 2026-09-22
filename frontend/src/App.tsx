@@ -78,6 +78,11 @@ export default function App() {
           await withTimeout(syncCurrentUserToCloud(), 8000, '同步账号');
         }
         await withTimeout(initUserDB(userId), 15000, '预热数据');
+        // 5. 自愈历史数据：修正旧版时区偏移导致少一天的付款日期（仅自动派生记录，无差异则空转）
+        try {
+          const { invoiceApi } = await import('./api/client');
+          await withTimeout(invoiceApi.repairPaymentDates(), 8000, '校正付款日期');
+        } catch { /* 校正失败不影响使用，编辑发票时仍会按正确逻辑重算 */ }
       }
 
       // 4. 数据就绪后才允许渲染（解决仪表盘首次加载竞态问题）

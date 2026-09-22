@@ -74,7 +74,12 @@ function addDays(dateStr: string, days: number): string {
   const dt = new Date(dateStr + 'T00:00:00');
   if (isNaN(dt.getTime())) return '';
   dt.setDate(dt.getDate() + days);
-  return dt.toISOString().slice(0, 10);
+  // 必须按本地日期拼接：toISOString() 会转成 UTC，东八区会把日期整体提前一天
+  // （如 2026-06-25 + 90 天 = 2026-09-23，toISOString 会错输成 2026-09-22）
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, '0');
+  const d = String(dt.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 function today(): Date {
@@ -322,6 +327,11 @@ export const invoiceApi = {
           updated.payment_date = autoPayDate;
           updated.payment_auto = true;
         }
+        // 付款日期随本次编辑变化时，状态按新付款日期自动判定（已付款保持不变）
+        if (updated.status !== 'paid' && updated.payment_date) {
+          const pd = new Date(updated.payment_date + 'T00:00:00');
+          updated.status = pd < today() ? 'overdue' : 'pending';
+        }
       }
       db.invoices[idx] = updated;
       writeDB(db);
@@ -377,6 +387,38 @@ export const invoiceApi = {
         }
       }
       return { updated };
+    }),
+
+  // 自愈历史数据：旧版 addDays 有时区偏移（本地零点转 UTC，东八区少一天），
+  // 导致自动派生付款日期错提前一天（如 6/25+90 存成 9/22）。仅校正自动派生记录，
+  // 手动锁定（payment_auto === false）的付款日期不覆盖。每次启动调用，无差异则空转。
+  repairPaymentDates: () =>
+    guard(async () => {
+      const userId = getUserId();
+      const db = readDB();
+      const period = getAccountPeriod();
+      let fixed = 0;
+      for (const inv of db.invoices) {
+        if (inv.userId !== userId) continue;
+        if (!inv.invoice_date) continue;
+        if (inv.payment_auto === false) continue; // 手动锁定的付款日期不覆盖
+        const correct = addDays(inv.invoice_date, period);
+        if (inv.payment_date === correct) continue;
+        inv.payment_date = correct;
+        inv.payment_auto = true;
+        // 状态随修正后的付款日期重新判定（已付款除外）
+        if (inv.status !== 'paid') {
+          const pd = new Date(correct + 'T00:00:00');
+          inv.status = pd < today() ? 'overdue' : 'pending';
+        }
+        fixed++;
+        // 云端模式：同步修正 Supabase，避免刷新后 loadCloud 拉回旧值
+        if (getAuthMode() === 'cloud') {
+          try { await supabase.from('invoices').update(invoiceToRow(inv)).eq('id', inv.id); } catch { /* 静默失败 */ }
+        }
+      }
+      if (fixed > 0) writeDB(db);
+      return { fixed };
     }),
 
   // 按需加载单张发票图片（启动时 loadCloud 不拉取 image_data，避免首屏过重）

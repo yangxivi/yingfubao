@@ -779,15 +779,24 @@ export default function InvoiceListPage() {
 function EditInvoiceForm({ selectedInvoice, onDone }: { selectedInvoice: any; onDone: () => void }) {
   const [form] = Form.useForm();
   const invoiceDate = Form.useWatch('invoice_date', form);
+  // 记录打开弹窗时的开票日期：仅当用户真正改动开票日期才触发联动，避免初始渲染覆盖手动锁定的付款日期
+  const initialInvoiceDate = useRef<string>('');
 
   // selectedInvoice 变化时重置表单数据（Modal 未销毁时切换编辑对象）
   useEffect(() => {
     if (!selectedInvoice) return;
+    initialInvoiceDate.current = selectedInvoice.invoice_date || '';
+    // 自动派生的发票：付款日期一律按「开票日期+账期」实时校正显示
+    // （兼容历史时区偏移导致少一天的旧数据，如 6/25+90 旧值 9/22 → 正确 9/23）；
+    // 手动锁定（payment_auto === false）的付款日期保持存储值，仍可手动改
+    const invDate = selectedInvoice.invoice_date ? dayjs(selectedInvoice.invoice_date) : null;
+    const autoPay = invDate ? invDate.add(getAccountPeriod(), 'day') : null;
+    const isAuto = selectedInvoice.payment_auto !== false;
     form.setFieldsValue({
       invoice_no: selectedInvoice.invoice_no || '',
       business_month: selectedInvoice.business_month || '',
-      invoice_date: selectedInvoice.invoice_date ? dayjs(selectedInvoice.invoice_date) : null,
-      payment_date: selectedInvoice.payment_date ? dayjs(selectedInvoice.payment_date) : null,
+      invoice_date: invDate,
+      payment_date: isAuto && autoPay ? autoPay : (selectedInvoice.payment_date ? dayjs(selectedInvoice.payment_date) : null),
       amount_excluding_tax: selectedInvoice.amount_excluding_tax,
       tax_amount: selectedInvoice.tax_amount,
       total_amount: selectedInvoice.total_amount,
@@ -797,11 +806,17 @@ function EditInvoiceForm({ selectedInvoice, onDone }: { selectedInvoice: any; on
     });
   }, [selectedInvoice?.id]); // 仅当编辑不同发票时重置
 
-  // 开票日期变化时，自动计算付款日期 = 开票日期 + 全局账期天数
+  // 用户改动开票日期时：付款日期 = 开票日期 + 全局账期天数；
+  // 状态随新付款日期自动判定（已付款保持不变）：付款日期早于今天 → 已逾期，否则 → 待付款
   useEffect(() => {
-    if (invoiceDate && dayjs.isDayjs(invoiceDate)) {
-      const payDate = invoiceDate.add(getAccountPeriod(), 'day');
-      form.setFieldsValue({ payment_date: payDate });
+    if (!invoiceDate || !dayjs.isDayjs(invoiceDate)) return;
+    const cur = invoiceDate.format('YYYY-MM-DD');
+    if (cur === initialInvoiceDate.current) return; // 打开弹窗/切换发票时的初始值不触发覆盖
+    initialInvoiceDate.current = cur; // 更新联动基准：开票日期改回原值时也能正确重算
+    const payDate = invoiceDate.add(getAccountPeriod(), 'day');
+    form.setFieldsValue({ payment_date: payDate });
+    if (form.getFieldValue('status') !== 'paid') {
+      form.setFieldsValue({ status: payDate.isBefore(dayjs().startOf('day')) ? 'overdue' : 'pending' });
     }
   }, [invoiceDate]);
 
